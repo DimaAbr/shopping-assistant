@@ -1,76 +1,91 @@
-Language: Nodejs
-    Natural fit for me
-    Don't think sdks in other languages will provide a significant advantage that I can't work around
+✅ Language: Nodejs
+    No LangGraph leaves only TS tools
 
-Setup:
-    Locally run tools with minimal dependencies. No docker. No SASS.
-    I don't want to waste time on setting up environments and I want it to be runnable anywhere
-    DON'T FORGET TO CHECK THAT IT RUNS ON WINDOWS, not just on my ubuntu sandbox vm
+✅ Setup:
+    ✅ Locally run tools with minimal dependencies. No docker. No SASS.
+    ❗DON'T FORGET TO CHECK THAT IT RUNS ON WINDOWS, not just on my ubuntu sandbox vm
 
-Orchestrtion:
-    I want to focus on the agent orchestraction part and start relatively low-level and bare-bones to learn the ecosystem
-    I don't want to be locked into a specific vendor.
-        + Vercel/LangChain seem like a good middleground
-        - OpenAI SDK is tied to specific vendor/model
-        ? Mastra/LangGraph sound like more than I need/too high level to enjoy learning
+✅ Orchestrtion: Vercel AI SDK
+    Focus on core agent loop
+    Vendor agnostic
+    Low level enough to enjoy learning and dealing with challenges
+    Leaves place for a custom implementation of things like memory, while also having built-in/third party tools, and can use Mastra bits if needed
+    Suits my phased approach: console -> basic api -> ui(s), mcp
 
-API/Layering:
-    I want a core library that I can test and communicate with using console first, then an API, then with MCP
-        From what I read before Vercel is good fit, @mcp/nodejs can provide the MCP wrapper
-        Specific http framework is not important for this task
-            ? Use opportunity to get into HONO
-    Leave UI for the end
+✅ API/Layering: Hono
+    Start with console developing the core agent loop
+    Api seems more realistic and flexible than tying the client and server to one app using nextjs
+    Opportunity to learn/practice Hono a bit
 
-Session Management:
-    1. Start with single chat and focus on core logic
-    2. Add local files for a single user
-    3? Add SQLite later for multi-user and basic auth
-        SQLite adds no extra dependencies and doesn't clutter file system
-        Auth seems like an interesting addition, how is auth done with MCP???
-        Consider drizzle-first for relative DB independence.
-            + Postgres handles documents
-            + Postgres handles embeddings and vector search
-            - Postgres is an extra dependency/docker
-    Mastra should have built-in support for session management - read up on that.
-    See if LangGraph's checkpointer and memory features are relevant here.
-    ? Need to check what I can do regarding the context window size and networking for long chats
-        Pagination in the API?
-        Streaming in the API?
-        What to do about disconnects and network instability?
-        Should I do some compactization/pagination for the agent?
+✅ Persistence: SQLite
+    No dependencies
+    Has tables
+    Has vector search and embedding support
+    Can use via Drizzle to keep DB concerns apart from app
+    No real benefits to Postgres with POC scale
 
-Product rendering:
-    1. Start with structured responses containing resources (image can be opened as link in console)
-    2. 
-    ? See if assistant-ui is a good fit as a component library
-    ? See if I can use Vercel's client lib commuinication infrastructure with my UI
-    ? Read up on MCP Apps / UI extensions for when I add MCP
+✅ Context and Memory Management:
+    ⚠️ Concerns:
+        - Compactization
+        - Trimming
+        - Recovery
+        - Semantic highlights
+        - Insights worth persisting
+
+    Can use Mastra memory tools including observational, semantic, and summarized memory if necessary
+    Start gradual, assume small simple conversations, focus on refining results and agent loop to keep context small
+    Add long session handling as a 'polish' step
+
+✅ Product rendering:
+    Custom React UI over AI SDK's `useChat`
+    Consider web component wrapper for embeddable widget (sounds like a fun and practical addition) ❔
+    
+    1. Start with structured responses containing resources (products api has image links)
+    2. Build custom UI when client is built
+    3. Add MCP Apps/Markdown fallback if I ever get there ❔
 
 To decide:
-    Where do I even start with testing?
-        DON'T LEAVE TESTS TO THE END JUST BECAUSE YOU DON'T LIKE DEALING WITH THEM
-        Ensure test coverage one system/layer before moving on to the next phase
+    ❗ Where do I even start with testing?
+        ❗ DON'T LEAVE TESTS TO THE END JUST BECAUSE YOU DON'T LIKE DEALING WITH THEM
+        ❗ Ensure test coverage one system/layer before moving on to the next phase
         How do I test different things?
             Deterministic code in tools  : Unit ?
             Flows with LLM-in-the-middle : Unit + Mocked LLM ?
             LLM decision making          : E2E ? Try not to waste too many tokens on just testing
-    How to structure the API/tools for different scenarios?
-        Broad categorization ("I'm remodeling my kitchen")
-            Use LLM to focus in on specifics ?
-            Manage product categories and use tool list existing products for category ?
-            Manage short summaries for categories instead of constant API queries ?
-        Open questions ("Gift for wife" vs "Gift for teenage sun")
-            Use separate LLM to look-up/decide on a good fit ?
-            Prompt model to pick up on trigger and ask clarifying questions to get structured input ?
-        Cross query context ("It's out of my price range", "Do they have that shirt in pink?")
-            Rely on model to refine the results ?
-            Translate "cheaper" to specific filter value ?
-            NEED TO CHECK THE API I HAVE TO FIGURE OUT WHAT IT SUPPORTS
+
+    ✅ How to structure the API/tools for different scenarios:
+        Start simple.
+        Build good toolset.
+        Refine prompt and trust agent.
+        Add complex flows and subagent loops only if necessary.
+
+        ⚠️ Concerns:
+            - Broad categorization ("I'm remodeling my kitchen")
+                Use LLM to focus in on specifics ?
+                Manage product categories and use tool list existing products for category ?
+                Manage short summaries for categories instead of constant API queries ?
+            - Open questions ("Gift for wife" vs "Gift for teenage sun")
+                Use separate LLM to look-up/decide on a good fit ?
+                Prompt model to pick up on trigger and ask clarifying questions to get structured input ?
+            - Cross query context ("It's out of my price range", "Do they have that shirt in pink?")
+                Rely on model to refine the results ?
+                Translate "cheaper" to specific filter value ?
+                NEED TO CHECK THE API I HAVE TO FIGURE OUT WHAT IT SUPPORTS
 
 To Read up:
-    The mockjson products API
-    Langgraph memory and checkpointers: Is it relevant to managing the context window?
-    Mastra: What's provided? Is it too high level to effectively learn from?
-    Vercel AI client SDK: Can I use just the streaming/communication infrastructure, or am I stuck with their UI?
-    assistant-ui: Is useful or do I want my own UI?
-    ANYTHING I CAN FIND ON LLM TESTING
+    ✅ The mockjson products API
+        * all endpoints have paging, sorting, projection as select CSV
+        - /products
+        - /products/search?q=text
+        - /products/category/:slug
+        - /categories
+        - /category-list - flat stub list. can be embedded in system prompt
+    🚫 Langgraph memory and checkpointers: Is it relevant to managing the context window? Yes, but Langgraph won't be used
+    🚫 Mastra: What's provided? Is it too high level to effectively learn from? Yes. It's a complete framework - boring
+    ✅ Vercel AI client SDK: Can I use just the streaming/communication infrastructure, or am I stuck with their UI?
+    🚫 assistant-ui: Is useful or do I want my own UI? My own UI. I want to experiment and have fun with it
+    ❗ ANYTHING I CAN FIND ON LLM TESTING
+
+Plan for the morning:
+    Scaffold initial app
+    Start developing the main agnet loop
