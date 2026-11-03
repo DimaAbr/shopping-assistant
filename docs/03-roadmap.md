@@ -43,39 +43,66 @@ Phase record: [04-phase-1-scaffold.md](04-phase-1-scaffold.md).
 - ~~Which package manager to use (npm or pnpm), and whether to use a monorepo layout now or later.~~ **pnpm**, single package for now. Split into a workspace in phase 5.
 - ~~How the provider is configured for `gpt-6-luna`: OpenAI-compatible provider or a dedicated one.~~ **`@ai-sdk/openai`**.
 
-## Phase 2 — Shopping behaviour (single user, short sessions) `[ ]`
+## Phase 2 — Shopping core (single user, short sessions) `[x]`
 
-**Goal:** a single agent that reliably turns conversation into well-formed product searches and answers with grounded results.
+Phase record: [05-phase-2-shopping-core.md](05-phase-2-shopping-core.md).
+
+> **Rescoped (2026-11-03):** cut down to the core loop: intent → query → tool → grounded reply, plus missing information, empty results and errors. Price, sorting, "cheaper", unsupported attributes, stock/shipping, product details and caching moved to phase 2b.
+
+**Goal:** a single agent that reliably turns conversation into well-formed product searches and answers only with grounded results.
 
 **Scope**
 - Domain layer:
-  - `ProductRepository` (dummyjson implementation)
-  - `searchProducts({ query?, category?, minPrice?, maxPrice?, sortBy?, limit? })` with **filtering in code**
-  - `listCategories()`, `getProduct(id)`
-- Agent tools wrap the domain functions. `toModelOutput` returns a slim product view to the model.
-- System prompt includes:
-  - the category list
-  - the data gaps: no variants, so no colours or sizes
-  - grounding rules: mention only products that were returned
-  - when to ask a clarifying question and when to search
-- Target behaviours:
-  - **Open-ended:** "gift for my wife" or "kitchen remodel". Clarify, or map to candidate categories.
-  - **Contextual refinement:** "too expensive, something cheaper". Set `maxPrice` from previous results.
-  - **Failure states:** no results. Broaden or switch category, and tell the user.
-  - **Unsupported attributes:** "do they have it in pink?". Say so honestly.
-- `stopWhen` step limit tuned.
-- **Golden eval set (evalite)**, seeded with the categories listed in 02 §11.
+  - `ProductRepository` (dummyjson implementation, 1:1 with endpoints, no filtering in code)
+  - a trimmed product model: fields we don't use are stripped
+- Two agent tools:
+  - `searchProducts({ query })`
+  - `browseCategory({ category })`, with the category as an enum of real slugs
+- `toModelOutput` gives the model a slim view without images.
+- Categories are fetched once at startup and go into the prompt. There is no `listCategories` tool.
+- System prompt rules:
+  - intent: small talk vs. product request vs. vague request (ask first, with category suggestions)
+  - query structuring
+  - grounding
+  - empty / unavailable states
+- The last allowed step forbids tools, so a turn always ends in text.
+- A golden eval set with code-based grounding checks.
 
 **Done when**
-- [ ] Domain unit tests pass: filtering, sorting, empty results, API errors (with mocked HTTP).
-- [ ] Mock-model tests pass: tool dispatch, `toModelOutput` shape, step-limit behaviour.
-- [ ] The golden set meets agreed pass-rate thresholds. Proposed ≥ 4/5 per case; set the final number in the phase plan.
-- [ ] The grounding check passes: no product is mentioned that the tool didn't return.
+- [x] Domain unit tests pass: empty results, field stripping, API errors (with an injected fake `fetch`).
+- [x] Mock-model tests pass: tool dispatch, `toModelOutput` shape, step-limit behaviour, error status reaching the model.
+- [x] The golden set passes ≥ 4/5 per case, except the known `tops` issue (left open, see 2b).
+- [x] The grounding check passes: no product or price is mentioned that a tool didn't return.
+- [x] Works on Windows (checked 2026-11-03).
 
 **Open questions**
-- Is a sub-agent / agent-as-tool needed for open-ended exploration, or is prompt + step limit enough? Decide based on eval results.
-- Fetch per request, or cache the catalog at startup?
-- Should categories go in the prompt only, or also stay available as a tool?
+- ~~Fetch per request, or cache the catalog at startup?~~ Fetch per request; only categories are loaded at startup. Caching is in 2b.
+- ~~Should categories go in the prompt only, or also stay available as a tool?~~ Prompt + enum only.
+- Is a sub-agent / agent-as-tool needed for open-ended exploration? Not so far: the vague-request cases pass with prompt + step limit.
+- Ambiguous category slugs (`tops` holds girls' dresses) mislead the agent. **Moved to 2b**: the fix depends on the data strategy there.
+
+## Phase 2b — Shopping refinement `[ ]`
+
+**Goal:** the features cut from phase 2, built on the same grounding and empty-state behaviour.
+
+**Decide first: the data strategy.** It shapes filtering, caching and the ambiguous-category fix (`tops`, see 05 "Known issues"):
+- **Store the catalog locally:** filter in code over the local copy; recategorise or rename misleading categories.
+- **Light pre-fetch:** fetch one or two items per category at startup, so the model sees what each category holds.
+- **Live, large, changing API (no pre-fetch):** check results against the request after the query, then fetch another page or treat the result as empty / out of stock.
+
+**Scope**
+- Price filters and sorting, with **filtering in code** (the API has no price range). Contextual refinement: "too expensive, something cheaper" sets `maxPrice` from previous results.
+- Combined query + category search.
+- Unsupported attributes: "do they have it in pink?". There are no variants in the data; say so honestly.
+- Stock / shipping filters: "only in stock", "ships to me".
+- Product details: `getProduct(id)`, plus the warranty, shipping and return fields (added back to the product model).
+- Catalog caching or pre-fetching behind the `ProductRepository` interface, as the data strategy requires.
+- Fix for ambiguous categories (`tops`), following the data strategy.
+- Eval cases for each: budget refinement, unsupported attribute, category confusion.
+
+**Done when**
+- [ ] Domain unit tests for filtering and sorting pass.
+- [ ] New eval cases pass ≥ 4/5, and the phase 2 cases still do.
 
 ## Phase 3 — Persistence & sessions `[ ]`
 

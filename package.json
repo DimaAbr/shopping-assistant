@@ -11,7 +11,8 @@
     "chat": "tsx src/adapters/cli/main.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eval": "vitest run --config evals/vitest.config.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.106",

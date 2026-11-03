@@ -153,6 +153,12 @@ dummyjson is small and simple. Its limits drive the tool design more than prompt
 - **Everything goes through a `ProductRepository` interface.** Fetching per request and caching the whole catalog at startup are interchangeable implementations. The cached version also enables local semantic search later.
 - **The prompt should acknowledge data gaps** (variants, stock specifics). The model should say so rather than invent an answer.
 
+> **Note (2026-11-03, phase 2):** phase 2 was cut down to the core. Details are in [05-phase-2-shopping-core.md](05-phase-2-shopping-core.md).
+> - **Two tools, 1:1 with endpoints:** `searchProducts({ query })` and `browseCategory({ category })`. No filtering in code yet; that comes with price filters in phase 2b.
+> - **Categories:** fetched once at startup, put in the prompt and used as a **zod enum** for `browseCategory`. No `listCategories` tool.
+> - **Trimmed product model:** id, title, description, category, price, rating, brand, thumbnail. Fields we don't model are stripped, so the agent has no data to make claims about stock, warranty or shipping.
+> - **Tools return a status** (`ok` / `empty` / `catalog_unavailable`) instead of throwing.
+
 ## 6. Persistence — SQLite (libsql) + Drizzle
 
 **Decision**
@@ -250,7 +256,7 @@ Testing starts in phase 1, not at the end. There are three layers:
 |---|---|---|---|
 | **Deterministic** | Vitest; dummyjson mocked with msw or fixtures | Domain functions, filtering, repository, store (create / list / load / append), context view builder | Always (CI-able) |
 | **Loop / wiring** | Vitest + AI SDK mock model (`ai/test`) with scripted tool calls | Tool dispatch, step limits, `toModelOutput`, persistence hooks, error paths | Always |
-| **Behaviour evals** | **evalite** golden set against the real model | Intent, tool-call quality, grounding, multi-turn refinement | **On demand only**, to save tokens |
+| **Behaviour evals** | **Golden set** against the real model (evalite planned; a vitest harness in practice, see §14.6) | Intent, tool-call quality, grounding, multi-turn refinement | **On demand only**, to save tokens |
 
 **Eval conventions**
 - **Prefer code-based assertions:**
@@ -332,3 +338,12 @@ This is a record of where the original plan's assumptions were wrong or changed 
 | 1 | The AI SDK API names in §3 / §12 (`onStepFinish`, `onFinish`, `system`, `stepCountIs`) are current. | AI SDK v7 renamed them. The old names are deprecated aliases. | The new names are used in code. There's a mapping note in §3. |
 | 2 | Lint (ESLint) would enforce the layering rules. | typescript-eslint 8.x doesn't support TypeScript 7. | An import-scanning Vitest test (`test/architecture.test.ts`) enforces the layering instead. There's no lint toolchain. |
 | 3 | A stream error surfaces as that error when the result is awaited. | v7 rejects `responseMessages` with a generic `NoOutputGeneratedError`. The real cause goes only to `onError`. | `agent/chat.ts` captures the error in `onError` and rethrows it. A test covers this. |
+
+### 14.6 Phase 2 (2026-11-03)
+
+| # | Assumption | What's actually the case | What changed |
+|---|---|---|---|
+| 1 | dummyjson search is "basic keyword matching". | It matches the **whole query as one substring** of the title or description. `lipstick red` and `laptops` find nothing. | The tool description and prompt ask for a short singular phrase in title word order. On an empty result the agent retries once with a simpler keyword or the closest category. |
+| 2 | An unknown category would be an API error. | `/products/category/{unknown}` returns an empty list. | `browseCategory` takes a zod enum of real slugs. |
+| 3 | evalite would be the eval runner (§11). | evalite 0.19 targets vitest 4 and `@ai-sdk/provider` v2, and needs `better-sqlite3` (native, rejected in §6). | A small harness on plain vitest in `evals/` (05 "Evals"). |
+| 4 | Category slugs say what's in them. | `tops` holds girls' frocks and dresses. The agent sometimes suggests "tops" for a boy. | Known issue, open in 03 phase 2. |

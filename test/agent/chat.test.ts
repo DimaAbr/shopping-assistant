@@ -1,34 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { MockLanguageModelV4, convertArrayToReadableStream } from 'ai/test'
-import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
+import { MockLanguageModelV4 } from 'ai/test'
 
 import { createChatSession } from '../../src/agent/chat.ts'
+import { createShoppingTools } from '../../src/agent/tools.ts'
 import { memorySink } from '../../src/observability/step-log.ts'
-
-/** A scripted stream for one model call: plain text, split into chunks. */
-function textReply(chunks: string[], usage = { input: 10, output: 5 }) {
-  const parts: LanguageModelV4StreamPart[] = [
-    { type: 'stream-start', warnings: [] },
-    { type: 'text-start', id: 't1' },
-    ...chunks.map(delta => ({ type: 'text-delta' as const, id: 't1', delta })),
-    { type: 'text-end', id: 't1' },
-    {
-      type: 'finish',
-      finishReason: { unified: 'stop', raw: 'stop' },
-      usage: {
-        inputTokens:  { total: usage.input,  noCache: usage.input, cacheRead: 0, cacheWrite: 0 },
-        outputTokens: { total: usage.output, text: usage.output,   reasoning: 0 },
-      },
-    },
-  ]
-  return { stream: convertArrayToReadableStream(parts) }
-}
-
-async function collect(stream: AsyncIterable<string>) {
-  let text = ''
-  for await (const chunk of stream) text += chunk
-  return text
-}
+import { categories, createFakeRepository, unavailable } from '../helpers/fake-repository.ts'
+import { collect, textReply, toolCallReply } from '../helpers/mock-model.ts'
 
 function newSession(model: MockLanguageModelV4) {
   const sink = memorySink()
@@ -103,5 +80,100 @@ describe('chat session', () => {
     await collect(turn.textStream)
     await expect(turn.done).rejects.toThrow('provider down')
     expect(session.history).toEqual([])
+  })
+})
+
+describe('chat session with shopping tools', () => {
+  function newToolSession(model: MockLanguageModelV4, options: { maxSteps?: number, repo?: ReturnType<typeof createFakeRepository> } = {}) {
+    const repo = options.repo ?? createFakeRepository()
+    const sink = memorySink()
+    const session = createChatSession({
+      model,
+      chatId:       'chat-1',
+      instructions: 'be nice',
+      tools:        createShoppingTools(repo, categories),
+      maxSteps:     options.maxSteps ?? 3,
+      logSink:      sink,
+    })
+    return { session, sink, repo }
+  }
+
+  async function runTurn(session: { send(text: string): { textStream: AsyncIterable<string>, done: Promise<void> } }, text: string) {
+    const turn = session.send(text)
+    const reply = await collect(turn.textStream)
+    await turn.done
+    return reply
+  }
+
+  it('runs the tool, answers in a second step, and keeps the tool call + result in history', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [toolCallReply('searchProducts', { query: 'lipstick' }), textReply(['Red Lipstick — $12.99'])],
+    })
+    const { session, repo, sink } = newToolSession(model)
+
+    expect(await runTurn(session, 'show me lipstick')).toBe('Red Lipstick — $12.99')
+
+    expect(repo.calls).toEqual([{ method: 'search', args: ['lipstick', 5] }])
+    expect(session.history.map(m => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant'])
+    expect(sink.records.map(r => r.toolCalls)).toEqual([[{ toolName: 'searchProducts', input: { query: 'lipstick' } }], []])
+  })
+
+  it('sends the model the slim output, not the full product', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [toolCallReply('searchProducts', { query: 'lipstick' }), textReply(['ok'])],
+    })
+    const { session } = newToolSession(model)
+    await runTurn(session, 'show me lipstick')
+
+    const toolMessage = JSON.stringify(model.doStreamCalls[1]!.prompt.find(m => m.role === 'tool'))
+    expect(toolMessage).toContain('Red Lipstick')
+    expect(toolMessage).toContain('"shown":1')
+    expect(toolMessage).not.toContain('thumbnail')
+  })
+
+  it('tells the model when the catalog is unavailable', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [toolCallReply('searchProducts', { query: 'lipstick' }), textReply(['The catalog is down.'])],
+    })
+    const { session } = newToolSession(model, { repo: createFakeRepository({ search: unavailable }) })
+    await runTurn(session, 'show me lipstick')
+
+    const toolMessage = JSON.stringify(model.doStreamCalls[1]!.prompt.find(m => m.role === 'tool'))
+    expect(toolMessage).toContain('catalog_unavailable')
+  })
+
+  it('forbids tool calls on the last allowed step, so the turn ends in text', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [toolCallReply('searchProducts', { query: 'lipstick' }), textReply(['Here you go.'])],
+    })
+    const { session } = newToolSession(model, { maxSteps: 2 })
+
+    expect(await runTurn(session, 'show me lipstick')).toBe('Here you go.')
+    expect(model.doStreamCalls.map(call => call.toolChoice?.type)).toEqual(['auto', 'none'])
+  })
+
+  it('with a single step allowed, answers without tools', async () => {
+    const model = new MockLanguageModelV4({ doStream: [textReply(['Hi!'])] })
+    const { session } = newToolSession(model, { maxSteps: 1 })
+
+    await runTurn(session, 'hi')
+    expect(model.doStreamCalls[0]!.toolChoice?.type).toBe('none')
+  })
+
+  it('later turns see earlier tool results', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [
+        toolCallReply('browseCategory', { category: 'smartphones' }),
+        textReply(['Here are some phones.']),
+        textReply(['I don\'t have warranty information.']),
+      ],
+    })
+    const { session } = newToolSession(model)
+
+    await runTurn(session, 'show me smartphones')
+    await runTurn(session, 'does the first one have a warranty?')
+
+    const prompt = model.doStreamCalls[2]!.prompt
+    expect(prompt.map(m => m.role)).toEqual(['system', 'user', 'assistant', 'tool', 'assistant', 'user'])
   })
 })
