@@ -21,7 +21,9 @@ These are the phased checkpoints for the POC. The architecture and its reasoning
 
 ---
 
-## Phase 1 — Scaffold & console chat `[ ]`
+## Phase 1 — Scaffold & console chat `[x]`
+
+Phase record: [04-phase-1-scaffold.md](04-phase-1-scaffold.md).
 
 **Goal:** an empty-but-working TypeScript project in which a model streams replies in the console.
 
@@ -33,13 +35,13 @@ These are the phased checkpoints for the POC. The architecture and its reasoning
 - Step logging to JSONL via `onStepFinish`.
 
 **Done when**
-- [ ] `npm run chat` gives a multi-turn streamed conversation on Linux **and Windows**.
-- [ ] `npm test` passes, including the mock-model test.
-- [ ] The step log shows token usage and the finish reason for every turn.
+- [x] `pnpm chat` gives a multi-turn streamed conversation on Linux **and Windows**.
+- [x] `pnpm test` passes, including the mock-model test.
+- [x] The step log shows token usage and the finish reason for every turn.
 
-**Open questions**
-- Which package manager to use (npm or pnpm), and whether to use a monorepo layout now or later.
-- How the provider is configured for `gpt-6-luna`: OpenAI-compatible provider or a dedicated one.
+**Open questions** *(answered 2026-11-03)*
+- ~~Which package manager to use (npm or pnpm), and whether to use a monorepo layout now or later.~~ **pnpm**, single package for now. Split into a workspace in phase 5.
+- ~~How the provider is configured for `gpt-6-luna`: OpenAI-compatible provider or a dedicated one.~~ **`@ai-sdk/openai`**.
 
 ## Phase 2 — Shopping behaviour (single user, short sessions) `[ ]`
 

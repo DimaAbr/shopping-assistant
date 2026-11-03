@@ -26,6 +26,13 @@ When a decision changes, edit it in place and add a dated note. Don't silently r
 - **Language:** Node + TypeScript.
 - **Provider-agnostic code.** Only configuration knows which model or provider is in use.
 
+> **Note (2026-11-03, phase 1):** tooling settled. Details are in [04-phase-1-scaffold.md](04-phase-1-scaffold.md).
+> - **Node 26** (LTS)
+> - **pnpm** with a single package; split into a workspace in phase 5
+> - **TypeScript 7** + `tsx`
+> - provider: **`@ai-sdk/openai`**
+> - **no formatter, no ESLint**: the layering rules are enforced by `test/architecture.test.ts`
+
 ## 2. Model
 
 **Decision**
@@ -60,6 +67,18 @@ When a decision changes, edit it in place and add a dated note. Don't silently r
 | `onStepFinish` / `onFinish` | Observability (§12) and persistence (§6) |
 | `pruneMessages` | Stripping old tool calls and results out of the model's view |
 | Mock models (`ai/test`) | Deterministic tests of the loop (§11) |
+
+> **Note (2026-11-03, phase 1):** we're on AI SDK **v7**, which renamed several of these. The old names still work but are deprecated. We use the new ones:
+>
+> | Old name | v7 name |
+> |---|---|
+> | `onStepFinish` | `onStepEnd` (plus `onStepStart`) |
+> | `onFinish` | `onEnd` |
+> | `system` | `instructions` |
+> | `stepCountIs` | `isStepCount` |
+> | `result.response.messages` | `result.responseMessages` |
+>
+> The mock model is `MockLanguageModelV4`. The rest of this doc keeps the old names where they describe a concept.
 
 **Why**
 - It is provider-agnostic, yet low-level enough that we write the memory and session logic ourselves. That is the learning goal.
@@ -305,3 +324,11 @@ This is a record of where the original plan's assumptions were wrong or changed 
 - **Observability from day 1:** step logging via `onStepFinish` (§12).
 - **Model registry by role** (`chat` / `summarizer` / `judge`), and the self-judging bias of a single-model setup (§2).
 - **Eval golden set as a phase 2 deliverable.** Testing was always planned for every phase. This makes the *behavioural* part concrete: code-based assertions, pass-rate thresholds, run on demand (§11).
+
+### 14.5 Phase 1 (2026-11-03)
+
+| # | Assumption | What's actually the case | What changed |
+|---|---|---|---|
+| 1 | The AI SDK API names in §3 / §12 (`onStepFinish`, `onFinish`, `system`, `stepCountIs`) are current. | AI SDK v7 renamed them. The old names are deprecated aliases. | The new names are used in code. There's a mapping note in §3. |
+| 2 | Lint (ESLint) would enforce the layering rules. | typescript-eslint 8.x doesn't support TypeScript 7. | An import-scanning Vitest test (`test/architecture.test.ts`) enforces the layering instead. There's no lint toolchain. |
+| 3 | A stream error surfaces as that error when the result is awaited. | v7 rejects `responseMessages` with a generic `NoOutputGeneratedError`. The real cause goes only to `onError`. | `agent/chat.ts` captures the error in `onError` and rethrows it. A test covers this. |
