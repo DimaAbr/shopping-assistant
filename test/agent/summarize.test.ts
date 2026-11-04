@@ -3,7 +3,7 @@ import { MockLanguageModelV4 } from 'ai/test'
 import type { UIMessage } from 'ai'
 
 import { cleanTitle, summarizeChat, TITLE_MAX_LENGTH } from '../../src/agent/summarize.ts'
-import { lipstick, lipstickListings } from '../helpers/fake-repository.ts'
+import { lipstickListings } from '../helpers/fake-repository.ts'
 import { generatedText } from '../helpers/mock-model.ts'
 
 const exchange: UIMessage[] = [
@@ -14,11 +14,11 @@ const exchange: UIMessage[] = [
     parts: [
       { type: 'step-start' },
       {
-        type: 'tool-searchProducts',
+        type: 'tool-findProducts',
         toolCallId: 'call-1',
         state: 'output-available',
-        input: { query: 'lipstick' },
-        output: { status: 'ok', total: lipstick.total, products: lipstickListings },
+        input: { request: 'lipstick' },
+        output: { status: 'ok', groups: [{ label: 'Lipstick', products: lipstickListings }], unmet: [] },
       },
       { type: 'step-start' },
       { type: 'text', text: 'Red Lipstick — $12.99', state: 'done' },
@@ -40,7 +40,7 @@ describe('summarizeChat (title)', () => {
     expect(prompt).toContain('user: show me lipstick')
     expect(prompt).toContain('assistant: Red Lipstick — $12.99')
     expect(prompt).not.toContain('imageUrl')
-    expect(prompt).not.toContain('searchProducts')
+    expect(prompt).not.toContain('findProducts')
     expect(model.doGenerateCalls[0]!.tools).toBeUndefined()
   })
 

@@ -31,14 +31,17 @@ const history: UIMessage[] = [
     parts: [
       { type: 'step-start' },
       {
-        type: 'tool-searchProducts',
+        type: 'tool-findProducts',
         toolCallId: 'call-1',
         state: 'output-available',
-        input: { query: 'lipstick' },
+        input: { request: 'lipstick' },
         output: {
           status: 'ok',
-          total: 1,
-          products: [{ id: 1, title: 'Red Lipstick', description: 'A classic bold red.', price: 12.99, currency: 'USD', imageUrl: 'https://cdn.dummyjson.com/x.png', category: 'beauty', rating: 4.5 }],
+          groups: [{
+            label: 'Lipstick',
+            products: [{ id: 1, title: 'Red Lipstick', description: 'A classic bold red.', price: 12.99, currency: 'USD', imageUrl: 'https://cdn.dummyjson.com/x.png', category: 'beauty', rating: 4.5 }],
+          }],
+          unmet: [],
         },
       },
       { type: 'step-start' },

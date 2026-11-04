@@ -22,8 +22,8 @@ import { ChatNotFoundError } from '../../store/chat-store.ts'
  * There is no `POST /chats`: the client owns chat ids (07, "Chat ids"). A POST to
  * an unknown id starts that chat, and it's stored with its first successful turn.
  *
- * Product data reaches clients inside tool parts (`tool-searchProducts`,
- * `tool-browseCategory`), shaped by `ShoppingToolResultSchema`, both live and from history.
+ * Product data reaches clients inside `tool-findProducts` parts, shaped by
+ * `ShoppingToolResultSchema` (09), both live and from history.
  */
 
 export const DEFAULT_PAGE_LIMIT = 50

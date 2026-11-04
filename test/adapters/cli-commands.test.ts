@@ -77,11 +77,11 @@ describe('render', () => {
         parts: [
           { type: 'step-start' },
           {
-            type: 'tool-searchProducts',
+            type: 'tool-findProducts',
             toolCallId: 'c',
             state: 'output-available',
-            input: { query: 'lipstick' },
-            output: { status: 'ok', total: 1, products: [{ id: 7 }] }
+            input: { request: 'lipstick' },
+            output: { status: 'ok', groups: [{ label: 'Lipstick', products: [{ id: 7 }] }], unmet: ['Lip Liner'] }
           },
           { type: 'step-start' },
           { type: 'text', text: 'Red Lipstick — $12.99', state: 'done' },
@@ -89,7 +89,7 @@ describe('render', () => {
       },
     ]
     expect(strip(formatReplay(messages)))
-      .toBe('you> lipstick?\nassistant> · searchProducts {"query":"lipstick"} → 1 of 1: #7\nRed Lipstick — $12.99')
+      .toBe('you> lipstick?\nassistant> · findProducts {"request":"lipstick"} → Lipstick: #7 · unmet: Lip Liner\nRed Lipstick — $12.99')
   })
 
   it('relative times', () => {

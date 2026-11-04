@@ -74,7 +74,7 @@ function AssistantMessage() {
           // Stored reasoning parts are provider-encrypted (02 §14.7); nothing to show.
           Reasoning: () => null,
           tools: {
-            by_name: { searchProducts: ProductTiles, browseCategory: ProductTiles },
+            by_name: { findProducts: ProductTiles },
             Fallback: ({ toolName }) => <p className={styles.toolNote}>Used {toolName}</p>,
           },
         }}

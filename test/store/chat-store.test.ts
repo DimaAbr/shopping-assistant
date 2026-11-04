@@ -3,7 +3,7 @@ import type { UIMessage } from 'ai'
 
 import { ChatNotFoundError, DEFAULT_USER_ID } from '../../src/store/chat-store.ts'
 import { users } from '../../src/store/schema.ts'
-import { lipstick, lipstickListings } from '../helpers/fake-repository.ts'
+import { lipstickListings } from '../helpers/fake-repository.ts'
 import { memoryStore } from '../helpers/store.ts'
 
 const user = (id: string, text: string): UIMessage => ({ id, role: 'user', parts: [{ type: 'text', text }] })
@@ -97,11 +97,11 @@ describe('chat store', () => {
       parts: [
         { type: 'step-start' },
         {
-          type: 'tool-searchProducts',
+          type: 'tool-findProducts',
           toolCallId: 'call-1',
           state: 'output-available',
-          input: { query: 'lipstick' },
-          output: { status: 'ok', total: lipstick.total, products: lipstickListings },
+          input: { request: 'lipstick' },
+          output: { status: 'ok', groups: [{ label: 'Lipstick', products: lipstickListings }], unmet: [] },
         },
         { type: 'text', text: 'Here you go.', state: 'done' },
       ],

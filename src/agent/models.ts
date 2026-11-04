@@ -10,7 +10,7 @@ import type { Config } from '../config/env.ts'
  * Everything else asks for a role and gets a provider-agnostic `LanguageModel`.
  */
 
-export type ModelRole = 'chat' | 'summarizer' | 'judge'
+export type ModelRole = 'chat' | 'summarizer' | 'judge' | 'searcher'
 
 export type ModelRegistry = {
   getModel(role: ModelRole): LanguageModel
@@ -21,9 +21,10 @@ export function createModelRegistry(config: Pick<Config, 'openaiApiKey' | 'model
 
   const provider = customProvider({
     languageModels: {
-      chat:       openai(config.models.chat),
+      chat: openai(config.models.chat),
       summarizer: openai(config.models.summarizer),
-      judge:      openai(config.models.judge),
+      judge: openai(config.models.judge),
+      searcher: openai(config.models.searcher),
     },
   })
 

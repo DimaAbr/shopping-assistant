@@ -1,28 +1,13 @@
 MVP works. Need to polish things up before I can call it working
+Search workflow is much better now
 
 Issues:
-- Have to refine query mechanism ❗
-    Tried saying I want to start working out
-        got question suggesting sports accessories, tops, shoes
-    Said accessories and shoes would be nice
-        1. Rendered results from 3 separate searches (15 tiles altogether, in 3 groupings, not combined)
-        2. Got women's high heel shoes in the mix. irrelevant to sports
-        3. Got a text summary of results which nobody asked for
-    TODO:
-    - Extract product search flow into dedicated tool with single unified response (subagent?)
-    - Consider adding result evaluator to filter out irrelevant items/query more pages (isMatch: bool, reason: string)???
-    - Improve prompt to return something more normalized on response like:
-        "I found some items you might like: <tiles>"
-        "Here's what he have: <tiles>"
+- The 'tops' category is still unstable in tests. It's too vague for proper results. Need to figure it out
+- The 'cheaper' price filter is too lax. It sets the price below the most expensive item, results in a near-identical list
 - Chat history (paging) not implemented on client
 - CSS needs work
-
-Complex cases still need more planning
-    How do I search by non-text fields like (price/rating/shipping)?
-    Where do I filter irrelevant results?
-    Do I query more pages? How many pages before I stop?
-    Do I pre-fetch and analyze catalogue stub (title, description, price) in the background and refresh periodically for updates?
-    Conversation context/semantics might be necessary to add search context (Shirts + [men's, sports, < $100])
+- Can I somehow 'search' by things like price without iterating through the entire list?
+    Maybe sort results when price is involved to get more consistency?
 
 Fun stuff for later:
     Auth + user management ❔

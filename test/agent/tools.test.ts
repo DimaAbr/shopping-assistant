@@ -1,100 +1,84 @@
 import { describe, expect, it } from 'vitest'
 
-import { createShoppingTools, DEFAULT_LIMIT, ShoppingToolResultSchema, toModelOutput, type ShoppingToolResult } from '../../src/agent/tools.ts'
+import { createShoppingTools, SHOPPING_TOOL_NAMES, ShoppingToolResultSchema, toModelOutput, type ShoppingToolResult } from '../../src/agent/tools.ts'
+import type { ShoppingToolName } from '../../src/adapters/http/contract.ts'
 import { ProductCardSchema } from '../../src/domain/product-card.ts'
+import { memorySink } from '../../src/observability/step-log.ts'
 import { categories, createFakeRepository, lipstickListings, unavailable } from '../helpers/fake-repository.ts'
+import { searchModel } from '../helpers/search-model.ts'
 
 const options = { toolCallId: 'call-1', messages: [], context: {} } as never
 
+const lipstickPlan = { needs: [{ label: 'Lipstick', searches: ['lipstick'] }] }
+
 function tools(overrides?: Parameters<typeof createFakeRepository>[0]) {
   const repo = createFakeRepository(overrides)
-  return { repo, tools: createShoppingTools(repo, categories) }
+  const sink = memorySink()
+  return { repo, sink, tools: createShoppingTools(repo, categories, { searchModel: searchModel({ plan: lipstickPlan }), logSink: sink }) }
 }
 
-describe('shopping tools', () => {
-  it('searchProducts returns ok with products and total', async () => {
-    const { repo, tools: t } = tools()
+const inputSchema = (t: ReturnType<typeof tools>['tools']) =>
+  t.findProducts.inputSchema as unknown as { safeParse(value: unknown): { success: boolean } }
 
-    const result = await t.searchProducts.execute!({ query: 'lipstick' }, options) as ShoppingToolResult
-
-    expect(result).toEqual({ status: 'ok', total: 1, products: lipstickListings })
-    expect(repo.calls).toEqual([{ method: 'search', args: ['lipstick', DEFAULT_LIMIT] }])
-  })
-
-  it('browseCategory passes the slug and limit through', async () => {
-    const { repo, tools: t } = tools()
-
-    const result = await t.browseCategory.execute!({ category: 'smartphones', limit: 2 }, options) as ShoppingToolResult
-
-    expect(result).toMatchObject({ status: 'ok', total: 16 })
-    expect(result.status === 'ok' && result.products).toHaveLength(2)
-    expect(repo.calls).toEqual([{ method: 'listByCategory', args: ['smartphones', 2] }])
-  })
-
-  it('returns products in the widget contract (card fields + model fields)', async () => {
+describe('findProducts tool', () => {
+  it('runs the search workflow and returns grouped products in the widget contract', async () => {
     const { tools: t } = tools()
 
-    const result = await t.browseCategory.execute!({ category: 'smartphones' }, options)
-
+    const result = await t.findProducts.execute!({ request: 'red lipstick' }, options) as ShoppingToolResult
+    
+    expect(result).toEqual({ status: 'ok', groups: [{ label: 'Lipstick', products: lipstickListings }], unmet: [] })
     const parsed = ShoppingToolResultSchema.parse(result)
-    expect(parsed.status).toBe('ok')
-    for (const product of parsed.status === 'ok' ? parsed.products : []) {
+    for (const product of parsed.status === 'ok' ? parsed.groups.flatMap(g => g.products) : []) {
       expect(ProductCardSchema.safeParse(product).success).toBe(true)
       expect(product.imageUrl).toMatch(/^https:\/\/cdn\.dummyjson\.com\//)
-      expect(product.currency).toBe('USD')
     }
   })
 
-  it('reports empty results as status "empty"', async () => {
-    const { tools: t } = tools()
-    expect(await t.searchProducts.execute!({ query: 'surfboard' }, options)).toEqual({ status: 'empty' })
-    expect(await t.browseCategory.execute!({ category: 'vehicle' }, options)).toEqual({ status: 'empty' })
+  it('logs the workflow model calls under the tool call id', async () => {
+    const { tools: t, sink } = tools()
+    await t.findProducts.execute!({ request: 'red lipstick' }, options)
+    expect(sink.records.map(r => r.scope)).toEqual(['findProducts:plan', 'findProducts:relevance'])
+    expect(sink.records.every(r => r.chatId === 'tool:call-1')).toBe(true)
   })
 
   it('reports catalog failures as status "catalog_unavailable" instead of throwing', async () => {
-    const { tools: t } = tools({ search: unavailable, listByCategory: unavailable })
-    expect(await t.searchProducts.execute!({ query: 'lipstick' }, options)).toEqual({ status: 'catalog_unavailable' })
-    expect(await t.browseCategory.execute!({ category: 'beauty' }, options)).toEqual({ status: 'catalog_unavailable' })
+    const { tools: t } = tools({ search: unavailable })
+    expect(await t.findProducts.execute!({ request: 'lipstick' }, options)).toEqual({ status: 'catalog_unavailable' })
   })
 
-  it('still throws unexpected errors (bugs are not "catalog unavailable")', async () => {
-    const { tools: t } = tools({ search: async () => { throw new RangeError('bug') } })
-    await expect(t.searchProducts.execute!({ query: 'lipstick' }, options)).rejects.toThrow('bug')
-  })
-
-  it('only accepts real category slugs', () => {
+  it('accepts a request with optional non-negative price bounds', () => {
     const { tools: t } = tools()
-    const schema = t.browseCategory.inputSchema as unknown as { safeParse(value: unknown): { success: boolean } }
+    const schema = inputSchema(t)
 
-    expect(schema.safeParse({ category: 'smartphones' }).success).toBe(true)
-    expect(schema.safeParse({ category: 'books' }).success).toBe(false)
+    expect(schema.safeParse({ request: 'running shoes', maxPrice: 100 }).success).toBe(true)
+    expect(schema.safeParse({ request: 'running shoes', minPrice: 20, maxPrice: 100 }).success).toBe(true)
+    expect(schema.safeParse({ request: '   ' }).success).toBe(false)
+    expect(schema.safeParse({ request: 'shoes', maxPrice: -1 }).success).toBe(false)
   })
 
-  it('rejects limits above the maximum and empty queries', () => {
+  it('exposes exactly the tool names in the client contract', () => {
     const { tools: t } = tools()
-    const schema = t.searchProducts.inputSchema as unknown as { safeParse(value: unknown): { success: boolean } }
-
-    expect(schema.safeParse({ query: 'lipstick', limit: 50 }).success).toBe(false)
-    expect(schema.safeParse({ query: '   ' }).success).toBe(false)
+    const names: readonly ShoppingToolName[] = SHOPPING_TOOL_NAMES
+    expect(Object.keys(t)).toEqual([...names])
   })
 
   it('needs at least one category', () => {
-    expect(() => createShoppingTools(createFakeRepository(), [])).toThrow()
+    expect(() => createShoppingTools(createFakeRepository(), [], { searchModel: searchModel({ plan: lipstickPlan }) })).toThrow()
   })
 })
 
 describe('model output', () => {
-  it('sends exactly the modelled fields, without the image URL or currency', () => {
-    const output = toModelOutput({ status: 'ok', total: 1, products: lipstickListings })
+  it('sends the groups with exactly the modelled fields, without the image URL or currency', () => {
+    const output = toModelOutput({ status: 'ok', groups: [{ label: 'Lipstick', products: lipstickListings }], unmet: ['Lip Liner'] })
 
-    expect(output).toMatchObject({ status: 'ok', total: 1, shown: 1 })
-    const product = output.status === 'ok' ? output.products[0]! : undefined
-    expect(Object.keys(product!).sort()).toEqual(['brand', 'category', 'description', 'id', 'price', 'rating', 'title'])
+    expect(output).toMatchObject({ status: 'ok', unmet: ['Lip Liner'] })
+    const product = output.status === 'ok' ? output.groups[0]!.products[0]! : undefined
+    expect(Object.keys(product!).sort()).toEqual(['brand', 'category', 'description', 'id', 'price', 'rating', 'shippingInformation', 'title'])
     expect(JSON.stringify(output)).not.toContain('cdn.dummyjson.com')
   })
 
   it('passes non-ok statuses through unchanged', () => {
-    expect(toModelOutput({ status: 'empty' })).toEqual({ status: 'empty' })
+    expect(toModelOutput({ status: 'no_match', unmet: ['Books'] })).toEqual({ status: 'no_match', unmet: ['Books'] })
     expect(toModelOutput({ status: 'catalog_unavailable' })).toEqual({ status: 'catalog_unavailable' })
   })
 })

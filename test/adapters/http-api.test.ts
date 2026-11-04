@@ -3,12 +3,12 @@ import { MockLanguageModelV4 } from 'ai/test'
 import type { UIMessage } from 'ai'
 
 import { createChatService } from '../../src/agent/chat-service.ts'
-import { createShoppingTools, ShoppingToolResultSchema } from '../../src/agent/tools.ts'
+import { ShoppingToolResultSchema } from '../../src/agent/tools.ts'
 import { createApi, MAX_PAGE_LIMIT, USER_ID_HEADER } from '../../src/adapters/http/app.ts'
 import { ProductCardSchema } from '../../src/domain/product-card.ts'
 import { DEFAULT_USER_ID } from '../../src/store/chat-store.ts'
 import { memorySink } from '../../src/observability/step-log.ts'
-import { categories, createFakeRepository } from '../helpers/fake-repository.ts'
+import { testShoppingTools } from '../helpers/fake-repository.ts'
 import { gatedTextReply, generatedText, textReply, toolCallReply } from '../helpers/mock-model.ts'
 import { memoryStore } from '../helpers/store.ts'
 
@@ -22,7 +22,7 @@ async function newApi(replies: Reply[]) {
     store,
     model: new MockLanguageModelV4({ doStream: replies }),
     summarizer: new MockLanguageModelV4({ doGenerate: generatedText('Lipstick shopping') }),
-    tools: createShoppingTools(createFakeRepository(), categories),
+    tools: testShoppingTools(),
     maxSteps: 3,
     logSink: memorySink(),
   })
@@ -58,7 +58,7 @@ async function chunksOf(response: Response): Promise<Array<{ type: string, [key:
     .map(line => JSON.parse(line.slice('data: '.length)))
 }
 
-const lipstickTurn = () => [toolCallReply('searchProducts', { query: 'lipstick' }), textReply(['Red Lipstick — $12.99'])]
+const lipstickTurn = () => [toolCallReply('findProducts', { request: 'lipstick' }), textReply(['Red Lipstick — $12.99'])]
 
 describe('POST /chats/:id/messages', () => {
   it('streams the turn, with product cards in the tool output', async () => {
@@ -74,7 +74,7 @@ describe('POST /chats/:id/messages', () => {
     const result = ShoppingToolResultSchema.parse(output)
     expect(result.status).toBe('ok')
 
-    const [card] = result.status === 'ok' ? result.products : []
+    const [card] = result.status === 'ok' ? result.groups[0]!.products : []
     expect(ProductCardSchema.parse(card)).toMatchObject({ title: 'Red Lipstick', price: 12.99, currency: 'USD' })
     expect(card!.imageUrl).toMatch(/^https:\/\/cdn\.dummyjson\.com\//)
     expect(card!.description.length).toBeGreaterThan(100)   // sent whole
@@ -195,9 +195,9 @@ describe('GET /chats/:id/messages', () => {
     expect(page.hasMore).toBe(false)
     expect(page.messages.map(m => m.role)).toEqual(['user', 'assistant', 'user', 'assistant'])
 
-    const toolPart = page.messages[1]!.parts.find(part => part.type === 'tool-searchProducts') as { output: unknown }
+    const toolPart = page.messages[1]!.parts.find(part => part.type === 'tool-findProducts') as { output: unknown }
     const result = ShoppingToolResultSchema.parse(toolPart.output)
-    expect(result.status === 'ok' && result.products.map(p => ProductCardSchema.parse(p).title)).toEqual(['Red Lipstick'])
+    expect(result.status === 'ok' && result.groups.flatMap(g => g.products).map(p => ProductCardSchema.parse(p).title)).toEqual(['Red Lipstick'])
   })
 
   it('pages backwards with before and limit', async () => {

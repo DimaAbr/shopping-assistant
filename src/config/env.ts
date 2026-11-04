@@ -17,6 +17,7 @@ const EnvSchema = z.object({
   MODEL_CHAT: z.string().min(1).default(DEFAULT_MODEL),
   MODEL_SUMMARIZER: z.string().min(1).default(DEFAULT_MODEL),
   MODEL_JUDGE: z.string().min(1).default(DEFAULT_MODEL),
+  MODEL_SEARCHER: z.string().min(1).default(DEFAULT_MODEL),
 
   MAX_STEPS: z.coerce.number().int().positive().default(5),
   STEP_LOG_PATH: z.string().min(1).default('logs/steps.jsonl'),
@@ -30,7 +31,7 @@ const EnvSchema = z.object({
 
 export type Config = {
   openaiApiKey: string
-  models: { chat: string, summarizer: string, judge: string }
+  models: { chat: string, summarizer: string, judge: string, searcher: string }
   maxSteps: number
   stepLogPath: string
   catalogBaseUrl: string
@@ -54,6 +55,7 @@ export function loadConfig(envFile = '.env'): Config {
       chat: env.MODEL_CHAT,
       summarizer: env.MODEL_SUMMARIZER,
       judge: env.MODEL_JUDGE,
+      searcher: env.MODEL_SEARCHER,
     },
     maxSteps: env.MAX_STEPS,
     stepLogPath: env.STEP_LOG_PATH,

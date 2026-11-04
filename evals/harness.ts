@@ -29,21 +29,25 @@ const models = createModelRegistry(config)
 const repo = createDummyJsonRepository({ baseUrl: config.catalogBaseUrl })
 export const categories = await repo.listCategories()
 
-/** The whole catalog (title + price), for the grounding checks only. */
-export const catalog: Array<{ id: number, title: string, price: number }> = await (async () => {
-  const response = await fetch(new URL('/products?limit=0&select=title,price', config.catalogBaseUrl))
-  const body = await response.json() as { products: Array<{ id: number, title: string, price: number }> }
+export type CatalogEntry = { id: number, title: string, price: number, availabilityStatus: string }
+
+/** The whole catalog (title, price, availability), for the grounding checks only. */
+export const catalog: CatalogEntry[] = await (async () => {
+  const response = await fetch(new URL('/products?limit=0&select=title,price,availabilityStatus', config.catalogBaseUrl))
+  const body = await response.json() as { products: CatalogEntry[] }
   return body.products
 })()
 
 export async function converse(userTurns: string[]): Promise<TurnRecord[]> {
+  const logSink = jsonlFileSink('logs/eval-steps.jsonl')
+
   const session = createChatSession({
     model: models.getModel('chat'),
     chatId: `eval-${crypto.randomUUID()}`,
     instructions: buildInstructions(categories),
-    tools: createShoppingTools(repo, categories),
+    tools: createShoppingTools(repo, categories, { searchModel: models.getModel('searcher'), logSink }),
     maxSteps: config.maxSteps,
-    logSink: jsonlFileSink('logs/eval-steps.jsonl'),
+    logSink,
   })
 
   const turns: TurnRecord[] = []

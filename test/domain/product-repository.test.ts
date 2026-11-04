@@ -36,13 +36,25 @@ describe('dummyjson repository', () => {
     expect(page.products[0]!.title).toBe('Red Lipstick')
   })
 
-  it('strips fields we do not model (stock, warranty, shipping, reviews, …)', async () => {
+  it('strips fields we do not model (stock counts, warranty, weight, dimensions, reviews, …)', async () => {
     const { repo } = repoWith(() => json(rawFixture('category-smartphones')))
 
     const page = await repo.listByCategory('smartphones', 5)
 
     expect(Object.keys(page.products[0]!).sort()).toEqual(
-      ['brand', 'category', 'description', 'id', 'price', 'rating', 'thumbnail', 'title'])
+      ['availabilityStatus', 'brand', 'category', 'description', 'id', 'price', 'rating', 'shippingInformation', 'tags', 'thumbnail', 'title'])
+  })
+
+  it('pages with skip, and only sends it when paging', async () => {
+    const { repo, urls } = repoWith(() => json(rawFixture('category-smartphones')))
+
+    await repo.search('phone', 20, 20)
+    await repo.listByCategory('smartphones', 20, 40)
+    await repo.listByCategory('smartphones', 20)
+
+    expect(urls[0]!.searchParams.get('skip')).toBe('20')
+    expect(urls[1]!.searchParams.get('skip')).toBe('40')
+    expect(urls[2]!.searchParams.has('skip')).toBe(false)
   })
 
   it('lists a category by slug', async () => {

@@ -8,16 +8,25 @@ export const dim = (text: string) => `\x1b[2m${text}\x1b[0m`
 
 /** A dim one-liner per tool call, so replies can be checked against what the tools returned. */
 export function traceLine(toolName: string, input: unknown, rawOutput: unknown) {
-  // Both shopping tools return a ShoppingToolResult; `undefined` means the tool threw.
+  // findProducts returns a ShoppingToolResult; `undefined` means the tool threw.
   const output = rawOutput as ShoppingToolResult | undefined
 
-  const outcome = output === undefined
-    ? 'error'
-    : output.status !== 'ok'
-      ? output.status
-      : `${output.products.length} of ${output.total}: ${output.products.map(p => `#${p.id}`).join(' ')}`
+  return dim(`· ${toolName} ${JSON.stringify(input)} → ${outcomeOf(output)}`)
+}
 
-  return dim(`· ${toolName} ${JSON.stringify(input)} → ${outcome}`)
+/** `Shoes: #1 #2 · Accessories: #3 · unmet: Tops` */
+function outcomeOf(output: ShoppingToolResult | undefined): string {
+  if (output === undefined) return 'error'
+  if (output.status === 'catalog_unavailable') return output.status
+
+  const parts = output.status === 'ok'
+    ? output.groups.map(group => `${group.label}: ${group.products.map(p => `#${p.id}`).join(' ')}`)
+    : [output.status]
+
+  if (output.unmet.length > 0)
+    parts.push(`unmet: ${output.unmet.join(', ')}`)
+
+  return parts.join(' · ')
 }
 
 export function chatLabel(chat: ChatSummary, maxLength = 50): string {

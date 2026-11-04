@@ -30,14 +30,15 @@ export async function bootstrap(options: Pick<ChatServiceOptions<ShoppingTools>,
   )
 
   const defaultUserId = await store.ensureDefaultUser()
+  const logSink = jsonlFileSink(config.stepLogPath)
   const service = createChatService({
     store,
     model: models.getModel('chat'),
     summarizer: models.getModel('summarizer'),
     instructions: buildInstructions(categories),
-    tools: createShoppingTools(repo, categories),
+    tools: createShoppingTools(repo, categories, { searchModel: models.getModel('searcher'), logSink }),
     maxSteps: config.maxSteps,
-    logSink: jsonlFileSink(config.stepLogPath),
+    logSink,
     onBackgroundError: options.onBackgroundError,
   })
 

@@ -29,6 +29,8 @@ export const ProductListingSchema = ProductCardSchema.extend({
   category: z.string(),
   rating: z.number(),
   brand: z.string().optional(),
+  /** e.g. "Ships in 1 week". Shown on the tile when present (09). */
+  shippingInformation: z.string().optional(),
 })
 
 export type ProductListing = z.infer<typeof ProductListingSchema>
@@ -44,5 +46,6 @@ export function toProductListing(product: Product): ProductListing {
     category: product.category,
     rating: product.rating,
     ...(product.brand === undefined ? {} : { brand: product.brand }),
+    ...(product.shippingInformation === undefined ? {} : { shippingInformation: product.shippingInformation }),
   }
 }

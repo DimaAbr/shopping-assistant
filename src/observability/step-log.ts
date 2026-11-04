@@ -13,6 +13,8 @@ export type StepLogRecord = {
   ts:              string
   chatId:          string
   turn:            number
+  /** Set for model calls inside a tool, e.g. `findProducts:plan`; absent for the chat loop itself. */
+  scope?:          string
   step:            number
   model:           string
   finishReason:    string
@@ -51,7 +53,7 @@ export function memorySink(): StepLogSink & { records: StepLogRecord[] } {
  * Latency is measured per step, from the start of the model call to its end
  * (including tool execution, once there are tools).
  */
-export function createStepLogger(context: { chatId: string, turn: number, sink: StepLogSink, now?: () => number }) {
+export function createStepLogger(context: { chatId: string, turn: number, scope?: string, sink: StepLogSink, now?: () => number }) {
   const now = context.now ?? performance.now.bind(performance)
   let stepStartedAt = now()
 
@@ -65,6 +67,7 @@ export function createStepLogger(context: { chatId: string, turn: number, sink: 
         ts:           new Date().toISOString(),
         chatId:       context.chatId,
         turn:         context.turn,
+        ...(context.scope === undefined ? {} : { scope: context.scope }),
         step:         step.stepNumber,
         model:        `${step.model.provider}:${step.model.modelId}`,
         finishReason: step.finishReason,

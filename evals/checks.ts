@@ -1,8 +1,7 @@
-import type { Check, TurnRecord } from './harness.ts'
+import type { CatalogEntry, Check, TurnRecord } from './harness.ts'
 
 /** Code-based checks (02 §11). Each returns `undefined` on success, or a reason. */
 
-type CatalogEntry = { id: number, title: string, price: number }
 
 const lastTurn = (turns: TurnRecord[]) => turns.at(-1)!
 
@@ -10,8 +9,15 @@ const lastTurn = (turns: TurnRecord[]) => turns.at(-1)!
 const normalize = (text: string) => text.replace(/[\u2018\u2019]/g, "'")
 const lastReply = (turns: TurnRecord[]) => normalize(lastTurn(turns).reply)
 
+function productsOf(turn: TurnRecord) {
+  return turn.results
+    .filter(result => result.status === 'ok')
+    .flatMap(result => result.groups)
+    .flatMap(group => group.products)
+}
+
 function returnedProducts(turns: TurnRecord[]) {
-  return turns.flatMap(turn => turn.results.flatMap(result => result.status === 'ok' ? result.products : []))
+  return turns.flatMap(productsOf)
 }
 
 // ── tool use ────────────────────────────────────────────────────────────────
@@ -24,25 +30,75 @@ export const someToolCall: Check = turns => lastTurn(turns).toolCalls.length > 0
   ? undefined
   : 'expected a tool call'
 
-export function calledEither(accept: (call: { toolName: string, input: Record<string, unknown> }) => boolean, label: string): Check {
-  return turns => lastTurn(turns).toolCalls.some(accept)
+/** Exactly one findProducts call in the last turn: one consolidated search per request (09). */
+export const oneSearch: Check = turns => {
+  const calls = lastTurn(turns).toolCalls
+  return calls.length === 1 && calls[0]!.toolName === 'findProducts'
     ? undefined
-    : `expected ${label}, got ${JSON.stringify(lastTurn(turns).toolCalls)}`
+    : `expected one findProducts call, got ${JSON.stringify(calls)}`
 }
 
-/** Browsed 1–3 categories, all from the plausible set. */
-export function browsedPlausible(plausible: readonly string[]): Check {
-  return turns => {
-    const browsed = lastTurn(turns).toolCalls
-      .filter(call => call.toolName === 'browseCategory')
-      .map(call => String(call.input.category))
-    if (browsed.length < 1 || browsed.length > 3) return `expected 1–3 browseCategory calls, got ${JSON.stringify(browsed)}`
+// ── search results (last turn) ──────────────────────────────────────────────
 
-    const odd = browsed.filter(slug => !plausible.includes(slug))
+/** The last turn returned at least one product, and all of them are from the plausible categories. */
+export function returnedPlausible(plausible: readonly string[]): Check {
+  return turns => {
+    const products = productsOf(lastTurn(turns))
+    if (products.length === 0) return 'no products returned'
+
+    const odd = products.filter(product => !plausible.includes(product.category))
     return odd.length === 0
       ? undefined
-      : `browsed implausible categories ${JSON.stringify(odd)}`
+      : `returned implausible products ${odd.map(p => `#${p.id} ${p.title} (${p.category})`).join(', ')}`
   }
+}
+
+/** The last turn returned no product from these categories. */
+export function returnedNoneFrom(categories: readonly string[]): Check {
+  return turns => {
+    const odd = productsOf(lastTurn(turns)).filter(product => categories.includes(product.category))
+    return odd.length === 0
+      ? undefined
+      : `returned ${odd.map(p => `#${p.id} ${p.title} (${p.category})`).join(', ')}`
+  }
+}
+
+/** Some returned product's title matches. */
+export function returnedTitle(pattern: RegExp): Check {
+  return turns => productsOf(lastTurn(turns)).some(product => pattern.test(product.title))
+    ? undefined
+    : `no returned product matches ${pattern}`
+}
+
+export function returnedGroups(min: number): Check {
+  return turns => {
+    const groups = lastTurn(turns).results.flatMap(result => result.status === 'ok' ? result.groups.map(g => g.label) : [])
+    return groups.length >= min
+      ? undefined
+      : `expected ≥ ${min} groups, got ${JSON.stringify(groups)}`
+  }
+}
+
+export function pricesAtMost(max: number): Check {
+  return turns => {
+    const over = productsOf(lastTurn(turns)).filter(product => product.price > max)
+    return over.length === 0
+      ? undefined
+      : `returned products over $${max}: ${over.map(p => `#${p.id} $${p.price}`).join(', ')}`
+  }
+}
+
+/**
+ * The reply doesn't repeat the tiles: at most one returned product title and
+ * one dollar amount (09, "Reply").
+ */
+export const noProductListing: Check = turns => {
+  const reply = lastReply(turns).toLowerCase()
+  const titles = productsOf(lastTurn(turns)).filter(product => reply.includes(normalize(product.title).toLowerCase()))
+  const prices = [...reply.matchAll(/\$\s?\d/g)]
+  return titles.length <= 1 && prices.length <= 1
+    ? undefined
+    : `reply lists products (${titles.length} titles, ${prices.length} prices)`
 }
 
 // ── reply content ───────────────────────────────────────────────────────────
@@ -128,13 +184,41 @@ export function groundedProducts(catalog: readonly CatalogEntry[]): Check {
   }
 }
 
-/** Every dollar amount in any reply is the price of a product a tool returned. */
+/** No search ever returns an out-of-stock product (09: filtered silently in code). */
+export function inStockOnly(catalog: readonly CatalogEntry[]): Check {
+  const soldOut = new Set(catalog.filter(entry => entry.availabilityStatus === 'Out of Stock').map(entry => entry.id))
+  return turns => {
+    const odd = returnedProducts(turns).filter(product => soldOut.has(product.id))
+    return odd.length === 0
+      ? undefined
+      : `returned out-of-stock products: ${odd.map(p => `#${p.id} ${p.title}`).join(', ')}`
+  }
+}
+
+/** Every returned product (last turn) ships within the pattern's times, e.g. /overnight|1-2 business days/. */
+export function shipsWithin(pattern: RegExp, label: string): Check {
+  return turns => {
+    const products = productsOf(lastTurn(turns))
+    if (products.length === 0) return 'no products returned'
+    const slow = products.filter(product => !pattern.test(product.shippingInformation ?? ''))
+    return slow.length === 0
+      ? undefined
+      : `returned products that don't ship ${label}: ${slow.map(p => `#${p.id} ${p.shippingInformation ?? '(unknown)'}`).join(', ')}`
+  }
+}
+
+/** Every dollar amount in any reply is the price of a product a tool returned, or an amount the user gave ("under $100"). */
 export const groundedPrices: Check = turns => {
-  const prices  = new Set(returnedProducts(turns).map(product => product.price.toFixed(2)))
+  const amountsIn = (text: string) => [...text.matchAll(/\$\s?(\d[\d,]*(?:\.\d{1,2})?)|\b(\d[\d,]*(?:\.\d{1,2})?)\s?(?:dollars|usd)\b/gi)]
+    .map(match => Number((match[1] ?? match[2])!.replaceAll(',', '')).toFixed(2))
+
+  const known = new Set([
+    ...returnedProducts(turns).map(product => product.price.toFixed(2)),
+    ...turns.flatMap(turn => amountsIn(turn.user)),
+  ])
   const unknown = turns
-    .flatMap(turn => [...turn.reply.matchAll(/\$\s?(\d[\d,]*(?:\.\d{1,2})?)/g)])
-    .map(match => Number(match[1]!.replaceAll(',', '')).toFixed(2))
-    .filter(amount => !prices.has(amount))
+    .flatMap(turn => amountsIn(turn.reply))
+    .filter(amount => !known.has(amount))
 
   return unknown.length === 0
     ? undefined

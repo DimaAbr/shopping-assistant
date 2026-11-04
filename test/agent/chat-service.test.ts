@@ -2,10 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 
 import { createChatService } from '../../src/agent/chat-service.ts'
-import { createShoppingTools } from '../../src/agent/tools.ts'
 import { ChatNotFoundError, DEFAULT_USER_ID } from '../../src/store/chat-store.ts'
 import { memorySink } from '../../src/observability/step-log.ts'
-import { categories, createFakeRepository } from '../helpers/fake-repository.ts'
+import { testShoppingTools } from '../helpers/fake-repository.ts'
 import { generatedText, textReply, toolCallReply } from '../helpers/mock-model.ts'
 import { memoryStore } from '../helpers/store.ts'
 
@@ -18,7 +17,7 @@ async function newService(chat: MockLanguageModelV4, summarizer = new MockLangua
     store,
     model: chat,
     summarizer,
-    tools: createShoppingTools(createFakeRepository(), categories),
+    tools: testShoppingTools(),
     maxSteps: 3,
     logSink: memorySink(),
     onBackgroundError: error => { errors.push(error) },
@@ -86,7 +85,7 @@ describe('chat service', () => {
   it('resumes a stored chat: history, tool results and new turns are kept', async () => {
     const model = new MockLanguageModelV4({
       doStream: [
-        toolCallReply('browseCategory', { category: 'smartphones' }),
+        toolCallReply('findProducts', { request: 'smartphones' }),
         textReply(['Here are some phones.']),
         textReply(['The first one.']),
       ],

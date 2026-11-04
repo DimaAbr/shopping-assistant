@@ -1,4 +1,4 @@
-import type { ShoppingToolResult, ShoppingTools } from '../../agent/tools.ts'
+import type { ProductSearchResult } from '../../domain/product-search.ts'
 import type { ChatSummary, MessagePage } from '../../store/types.ts'
 
 /**
@@ -8,10 +8,15 @@ import type { ChatSummary, MessagePage } from '../../store/types.ts'
  */
 
 export type { ProductCard, ProductListing } from '../../domain/product-card.ts'
-export type { ShoppingToolResult }
+/** A shopping tool part's `output` (09). Same as `ShoppingToolResult` in agent/tools.ts. */
+export type ShoppingToolResult = ProductSearchResult
 
-/** Tool names. A tool part's `type` is `tool-<name>`; its `output` is a `ShoppingToolResult`. */
-export type ShoppingToolName = keyof ShoppingTools
+/**
+ * Tool names. A tool part's `type` is `tool-<name>`; its `output` is a `ShoppingToolResult`.
+ * Spelled out rather than derived from agent/tools.ts, so clients never type-check
+ * server modules (see `SHOPPING_TOOL_NAMES`).
+ */
+export type ShoppingToolName = 'findProducts'
 
 /** `GET /chats` items. Dates arrive as ISO strings. */
 export type ChatSummaryJson = Omit<ChatSummary, 'createdAt' | 'updatedAt'> & { createdAt: string, updatedAt: string }

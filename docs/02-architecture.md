@@ -97,6 +97,8 @@ When a decision changes, edit it in place and add a dated note. Don't silently r
 - Add a sub-agent only when a golden eval case (§11) shows the single agent can't handle it. An example is open-ended gift exploration with retries ("no flowers, try chocolate").
 - A sub-agent would be an **agent-as-tool**: a tool whose `execute` runs its own `generateText` loop.
 
+> **Note (2026-11-04, 2b part 1):** a live test showed the need: a two-kind request ("accessories and shoes") gave 3 tool calls, irrelevant results and a reply that repeated the tiles. Product search is now **one tool, `findProducts`**. Its `execute` runs a **fixed workflow, not a loop**: plan (LLM) → queries + price filter (code) → relevance (LLM) → one refill. The new `searcher` model role makes these calls. Only the top-level call and result reach history; the inner calls go to the step log. Details are in [09-phase-2b-product-search.md](09-phase-2b-product-search.md).
+
 ## 4. Layering
 
 ```
@@ -158,6 +160,8 @@ dummyjson is small and simple. Its limits drive the tool design more than prompt
 > - **Categories:** fetched once at startup, put in the prompt and used as a **zod enum** for `browseCategory`. No `listCategories` tool.
 > - **Trimmed product model:** id, title, description, category, price, rating, brand, thumbnail. Fields we don't model are stripped, so the agent has no data to make claims about stock, warranty or shipping.
 > - **Tools return a status** (`ok` / `empty` / `catalog_unavailable`) instead of throwing.
+>
+> **Note (2026-11-04, 2b part 1):** the product model gained `tags` (relevance step only), `availabilityStatus` (code only: out-of-stock is filtered out silently) and `shippingInformation` (relevance, chat model and tiles). Weight and dimensions stay out: their values are unitless and meaningless. See 09 "Product fields".
 
 > **Note (2026-11-04): data strategy decided.** dummyjson is treated as a stand-in for a **large, live, changing catalog API** whose stock, sales and discounts change, and which we must not overload. There's **no local mirror and no bulk pre-fetch**: "caching the whole catalog at startup" above is no longer an option, and neither is semantic search over a cached copy. Filtering stays "fetch, then filter and check in code", with paging when a page doesn't satisfy the request. Short-lived per-query caching is still allowed. The detailed design is in phase 2b, which is deferred until after phases 3 and 5 (03).
 
@@ -263,6 +267,8 @@ This is the central concept of the memory work.
   - both
 
   Decide at the start of the MCP phase.
+
+  > **Decided (2026-11-04, 09):** expose **`findProducts`**. Raw domain tools would hand the host's model our catalog quirks (substring search, misleading slugs, no filtering). A full chat agent would be too opaque. The search workflow is the middle ground, and it's a plain function (`agent/search/find-products.ts`) that is easy to wrap.
 - **Rendering in other clients:** our React components can't run there. Two options:
   - a **markdown fallback** (product list with image links), which works everywhere
   - **MCP Apps** (the MCP UI extension) for hosts that support it
@@ -367,7 +373,7 @@ This is a record of where the original plan's assumptions were wrong or changed 
 | 1 | dummyjson search is "basic keyword matching". | It matches the **whole query as one substring** of the title or description. `lipstick red` and `laptops` find nothing. | The tool description and prompt ask for a short singular phrase in title word order. On an empty result the agent retries once with a simpler keyword or the closest category. |
 | 2 | An unknown category would be an API error. | `/products/category/{unknown}` returns an empty list. | `browseCategory` takes a zod enum of real slugs. |
 | 3 | evalite would be the eval runner (§11). | evalite 0.19 targets vitest 4 and `@ai-sdk/provider` v2, and needs `better-sqlite3` (native, rejected in §6). | A small harness on plain vitest in `evals/` (05 "Evals"). |
-| 4 | Category slugs say what's in them. | `tops` holds girls' frocks and dresses. The agent sometimes suggests "tops" for a boy. | Known issue, open in 03 phase 2. |
+| 4 | Category slugs say what's in them. | `tops` holds girls' frocks and dresses. The agent sometimes suggests "tops" for a boy. | Known issue, open in 03 phase 2. *(2026-11-04, 09: a relevance filter on results. Clarifying questions still only see slugs. Rule: no catalog knowledge in prompts, since a real API wouldn't give us any.)* |
 
 ### 14.7 Phase 3 (2026-11-04)
 

@@ -3,9 +3,8 @@ import { MockLanguageModelV4 } from 'ai/test'
 import type { UIMessage } from 'ai'
 
 import { createChatSession } from '../../src/agent/chat.ts'
-import { createShoppingTools } from '../../src/agent/tools.ts'
 import { memorySink } from '../../src/observability/step-log.ts'
-import { categories, createFakeRepository, unavailable } from '../helpers/fake-repository.ts'
+import { createFakeRepository, testShoppingTools, unavailable } from '../helpers/fake-repository.ts'
 import { collect, textReply, toolCallReply } from '../helpers/mock-model.ts'
 
 function newSession(model: MockLanguageModelV4) {
@@ -92,7 +91,7 @@ describe('chat session with shopping tools', () => {
       model,
       chatId: 'chat-1',
       instructions: 'be nice',
-      tools: createShoppingTools(repo, categories),
+      tools: testShoppingTools(repo),
       maxSteps: options.maxSteps ?? 3,
       logSink: sink,
     })
@@ -108,35 +107,35 @@ describe('chat session with shopping tools', () => {
 
   it('runs the tool, answers in a second step, and keeps the tool call + result in history', async () => {
     const model = new MockLanguageModelV4({
-      doStream: [toolCallReply('searchProducts', { query: 'lipstick' }), textReply(['Red Lipstick — $12.99'])],
+      doStream: [toolCallReply('findProducts', { request: 'lipstick' }), textReply(['Red Lipstick — $12.99'])],
     })
     const { session, repo, sink } = newToolSession(model)
 
     expect(await runTurn(session, 'show me lipstick')).toBe('Red Lipstick — $12.99')
 
-    expect(repo.calls).toEqual([{ method: 'search', args: ['lipstick', 5] }])
+    expect(repo.calls).toEqual([{ method: 'search', args: ['lipstick', 20] }])
     // One UI message per side; the tool call + result are parts of the assistant message.
     expect(session.history.map(m => m.role)).toEqual(['user', 'assistant'])
-    expect(session.history[1]!.parts.map(p => p.type)).toContain('tool-searchProducts')
-    expect(sink.records.map(r => r.toolCalls)).toEqual([[{ toolName: 'searchProducts', input: { query: 'lipstick' } }], []])
+    expect(session.history[1]!.parts.map(p => p.type)).toContain('tool-findProducts')
+    expect(sink.records.map(r => r.toolCalls)).toEqual([[{ toolName: 'findProducts', input: { request: 'lipstick' } }], []])
   })
 
   it('sends the model the slim output, not the full product', async () => {
     const model = new MockLanguageModelV4({
-      doStream: [toolCallReply('searchProducts', { query: 'lipstick' }), textReply(['ok'])],
+      doStream: [toolCallReply('findProducts', { request: 'lipstick' }), textReply(['ok'])],
     })
     const { session } = newToolSession(model)
     await runTurn(session, 'show me lipstick')
 
     const toolMessage = JSON.stringify(model.doStreamCalls[1]!.prompt.find(m => m.role === 'tool'))
     expect(toolMessage).toContain('Red Lipstick')
-    expect(toolMessage).toContain('"shown":1')
+    expect(toolMessage).toContain('"label":"Lipstick"')
     expect(toolMessage).not.toContain('imageUrl')
   })
 
   it('tells the model when the catalog is unavailable', async () => {
     const model = new MockLanguageModelV4({
-      doStream: [toolCallReply('searchProducts', { query: 'lipstick' }), textReply(['The catalog is down.'])],
+      doStream: [toolCallReply('findProducts', { request: 'lipstick' }), textReply(['The catalog is down.'])],
     })
     const { session } = newToolSession(model, { repo: createFakeRepository({ search: unavailable }) })
     await runTurn(session, 'show me lipstick')
@@ -147,7 +146,7 @@ describe('chat session with shopping tools', () => {
 
   it('forbids tool calls on the last allowed step, so the turn ends in text', async () => {
     const model = new MockLanguageModelV4({
-      doStream: [toolCallReply('searchProducts', { query: 'lipstick' }), textReply(['Here you go.'])],
+      doStream: [toolCallReply('findProducts', { request: 'lipstick' }), textReply(['Here you go.'])],
     })
     const { session } = newToolSession(model, { maxSteps: 2 })
 
@@ -166,7 +165,7 @@ describe('chat session with shopping tools', () => {
   it('later turns see earlier tool results', async () => {
     const model = new MockLanguageModelV4({
       doStream: [
-        toolCallReply('browseCategory', { category: 'smartphones' }),
+        toolCallReply('findProducts', { request: 'smartphones' }),
         textReply(['Here are some phones.']),
         textReply(['I don\'t have warranty information.']),
       ],
@@ -188,7 +187,7 @@ describe('chat session persistence hooks', () => {
       model,
       chatId: 'chat-1',
       instructions: 'be nice',
-      tools: createShoppingTools(createFakeRepository(), categories),
+      tools: testShoppingTools(),
       maxSteps: 3,
       logSink: memorySink(),
       initialMessages: options.initialMessages,
@@ -232,15 +231,15 @@ describe('chat session persistence hooks', () => {
 
   it('stores the full tool output, while the model only sees the slim view', async () => {
     const model = new MockLanguageModelV4({
-      doStream: [toolCallReply('searchProducts', { query: 'lipstick' }), textReply(['Red Lipstick — $12.99'])],
+      doStream: [toolCallReply('findProducts', { request: 'lipstick' }), textReply(['Red Lipstick — $12.99'])],
     })
     const { session, saved } = persistingSession(model)
 
     const turn = await session.send('show me lipstick')
     await turn.done
 
-    const toolPart = saved[0]![1]!.parts.find(p => p.type === 'tool-searchProducts')
-    expect(toolPart).toMatchObject({ state: 'output-available', input: { query: 'lipstick' }, output: { status: 'ok' } })
+    const toolPart = saved[0]![1]!.parts.find(p => p.type === 'tool-findProducts')
+    expect(toolPart).toMatchObject({ state: 'output-available', input: { request: 'lipstick' }, output: { status: 'ok' } })
     expect(JSON.stringify(toolPart)).toContain('imageUrl')
     expect(JSON.stringify(model.doStreamCalls[1]!.prompt)).not.toContain('imageUrl')
   })
@@ -248,7 +247,7 @@ describe('chat session persistence hooks', () => {
   it('resumes from initialMessages: the model sees prior tool results, turn numbers continue', async () => {
     // Record a turn with a tool call, then start a new session from what was saved.
     const first = new MockLanguageModelV4({
-      doStream: [toolCallReply('browseCategory', { category: 'smartphones' }), textReply(['Here are some phones.'])],
+      doStream: [toolCallReply('findProducts', { request: 'smartphones' }), textReply(['Here are some phones.'])],
     })
     const { session: original, saved } = persistingSession(first)
     await (await original.send('show me smartphones')).done
@@ -259,7 +258,7 @@ describe('chat session persistence hooks', () => {
     const resumed = createChatSession({
       model: second,
       chatId: 'chat-1',
-      tools: createShoppingTools(createFakeRepository(), categories),
+      tools: testShoppingTools(),
       maxSteps: 3,
       logSink: sink,
       initialMessages: stored,
@@ -268,7 +267,7 @@ describe('chat session persistence hooks', () => {
 
     const prompt = second.doStreamCalls[0]!.prompt
     expect(prompt.map(m => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant', 'user'])
-    expect(JSON.stringify(prompt.find(m => m.role === 'tool'))).toContain('"shown"')
+    expect(JSON.stringify(prompt.find(m => m.role === 'tool'))).toContain('"groups"')
     expect(sink.records[0]!.turn).toBe(2)
     expect(resumed.history).toHaveLength(4)
   })

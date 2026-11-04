@@ -9,10 +9,10 @@ import { CategoryListSchema, ProductPageSchema, type ProductPage } from './produ
  */
 
 export interface ProductRepository {
-  /** Case-insensitive substring match on title / description (dummyjson semantics). */
-  search(query: string, limit: number): Promise<ProductPage>
+  /** Case-insensitive substring match on title / description (dummyjson semantics). `skip` pages through results. */
+  search(query: string, limit: number, skip?: number): Promise<ProductPage>
   /** An unknown slug yields an empty page, not an error. */
-  listByCategory(slug: string, limit: number): Promise<ProductPage>
+  listByCategory(slug: string, limit: number, skip?: number): Promise<ProductPage>
   listCategories(): Promise<string[]>
 }
 
@@ -61,15 +61,22 @@ export function createDummyJsonRepository(options: DummyJsonRepositoryOptions): 
   }
 
   return {
-    search: (query, limit) =>
-      get('/products/search', { q: query, limit: String(limit) }, ProductPageSchema),
+    search: (query, limit, skip = 0) =>
+      get('/products/search', { q: query, ...pageParams(limit, skip) }, ProductPageSchema),
 
-    listByCategory: (slug, limit) =>
-      get(`/products/category/${encodeURIComponent(slug)}`, { limit: String(limit) }, ProductPageSchema),
+    listByCategory: (slug, limit, skip = 0) =>
+      get(`/products/category/${encodeURIComponent(slug)}`, pageParams(limit, skip), ProductPageSchema),
 
     listCategories: () =>
       get('/products/category-list', {}, CategoryListSchema),
   }
+}
+
+/** `skip` is only sent when paging, so first-page URLs stay as they were. */
+function pageParams(limit: number, skip: number): Record<string, string> {
+  return skip > 0
+    ? { limit: String(limit), skip: String(skip) }
+    : { limit: String(limit) }
 }
 
 function describe(error: unknown): string {

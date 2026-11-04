@@ -81,7 +81,7 @@ Phase record: [05-phase-2-shopping-core.md](05-phase-2-shopping-core.md).
 - Is a sub-agent / agent-as-tool needed for open-ended exploration? Not so far: the vague-request cases pass with prompt + step limit.
 - Ambiguous category slugs (`tops` holds girls' dresses) mislead the agent. **Moved to 2b**: the fix depends on the data strategy there.
 
-## Phase 2b — Shopping refinement `[ ]`
+## Phase 2b — Shopping refinement `[~]`
 
 > **Deferred (2026-11-04):** 2b comes after the core: persistence & sessions (phase 3) and the HTTP API & client (phase 5). The more complex queries need more design thought than the MVP needs. The phase numbers stay as they are.
 
@@ -94,19 +94,22 @@ Phase record: [05-phase-2-shopping-core.md](05-phase-2-shopping-core.md).
 
 The detailed design (filtering, paging, the `tops` fix) is left for 2b's own planning session.
 
+> **Part 1 (2026-11-04): consolidated search.** Phase record: [09-phase-2b-product-search.md](09-phase-2b-product-search.md). A live test ("accessories and shoes" for a workout) gave 3 tool calls, 15 tiles, women's heels and a reply that repeated the tiles. `searchProducts` / `browseCategory` are replaced by **one `findProducts({ request, minPrice?, maxPrice? })` tool**, which runs a fixed workflow: plan → query → price filter in code → relevance filter → one refill. Results are grouped by need, with `unmet` needs. The reply is a short lead-in.
+
 **Scope**
-- Price filters and sorting, with **filtering in code** (the API has no price range). Contextual refinement: "too expensive, something cheaper" sets `maxPrice` from previous results.
-- Combined query + category search.
+- ~~Price filters~~ (done in part 1: `minPrice` / `maxPrice`, filtered in code) and sorting. Contextual refinement: "too expensive, something cheaper" sets `maxPrice` from previous results *(part 1: prompt rule + eval case)*.
+- ~~Combined query + category search.~~ Done in part 1: the planner mixes both per need.
 - Unsupported attributes: "do they have it in pink?". There are no variants in the data; say so honestly.
-- Stock / shipping filters: "only in stock", "ships to me".
-- Product details: `getProduct(id)`, plus the warranty, shipping and return fields (added back to the product model).
+- Stock / shipping filters: ~~"only in stock"~~ (part 1: out-of-stock is always filtered out in code), "ships to me". *Part 1: shipping time is known data, and the relevance step applies stated deadlines. Destinations aren't in the data.*
+- Product details: `getProduct(id)`, plus the warranty and return fields (added back to the product model). *(Shipping time, tags and availability were added in part 1; weight and dimensions are dropped as meaningless, 09.)*
 - Short-lived, per-query caching behind the `ProductRepository` interface, if paging and post-query checks need it (no catalog mirror).
-- Fix for ambiguous categories (`tops`), following the data strategy.
-- Eval cases for each: budget refinement, unsupported attribute, category confusion.
+- Fix for ambiguous categories (`tops`), following the data strategy. *Part 1: the relevance filter drops misfits from results. The clarifying-question side is still open: no catalog knowledge goes into prompts, so the model only sees slugs (09).*
+- Eval cases for each: ~~budget refinement~~, unsupported attribute, ~~category confusion~~ (part 1 added both, plus multi-need and budget).
 
 **Done when**
-- [ ] Domain unit tests for filtering and sorting pass.
-- [ ] New eval cases pass ≥ 4/5, and the phase 2 cases still do.
+- [~] Domain unit tests for filtering and sorting pass. *(Filtering, paging and dedupe done in part 1; sorting open.)*
+- [~] New eval cases pass ≥ 4/5, and the phase 2 cases still do. *(Part 1, 2026-11-04: 18/19 with the new product fields. The school/`tops` case is unstable, 3/5 to 5/5 between runs. Open: the cases for the remaining 2b features.)*
+- [x] Part 1 works on Windows (checked by the user, 2026-11-04).
 
 ## Phase 3 — Persistence & sessions `[x]`
 
@@ -197,7 +200,7 @@ Phase records: [07-phase-5-http-api.md](07-phase-5-http-api.md) (API), [08-phase
 - ~~Render `tool-searchProducts` parts as a `<ProductTiles>` component (image, title, price, rating).~~ Done in 5b, for both tools. Rating isn't shown yet.
 - ~~Loading and error states for tool parts.~~ Done in 5b.
 - Optional: an embeddable **widget** (web component or iframe) over the 5b core. ~~First check whether the AI SDK client can be used without React.~~ It can: `ai`'s `Chat` class (02 §14.8). Open: shadow-root styling, CORS, bundle size (~945 KB), and how a host passes identity.
-- Tile polish: show only the products the reply is about (after 2b's filtering), collapse empty retries, load older history.
+- Tile polish: ~~show only the products the reply is about (after 2b's filtering), collapse empty retries~~ (part 1 of 2b: one filtered, grouped result per request; no retries), load older history.
 
 **Done when**
 - [x] Tiles render during streaming and after reloading history.
@@ -224,7 +227,7 @@ Phase records: [07-phase-5-http-api.md](07-phase-5-http-api.md) (API), [08-phase
 **Goal:** other MCP-capable clients can use the product search, with reasonable rendering.
 
 **Scope**
-- **Decide first:** expose the domain tools, an agent-as-tool, or both (open question from 02 §10).
+- ~~**Decide first:** expose the domain tools, an agent-as-tool, or both (open question from 02 §10).~~ Decided (2026-11-04, 09): expose **`findProducts`**, the search workflow, as the MCP tool.
 - `@modelcontextprotocol/sdk` Streamable HTTP endpoint, mounted in Hono.
 - Anonymous sessions, possibly with a persistent opaque id.
 - Rendering for other clients:

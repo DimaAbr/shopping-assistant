@@ -4,20 +4,20 @@ import type { ProductListing, ShoppingToolResult } from 'shopping-assistant/cont
 import styles from './ProductTiles.module.css'
 
 /**
- * The product widget: renders a `searchProducts` / `browseCategory` tool part,
- * live while streaming and from stored history (07, "Product card contract").
+ * The product widget: renders a `findProducts` tool part, live while streaming
+ * and from stored history (07 "Product card contract", 09). One section per
+ * group, under the group's label.
  */
 
-type ToolArgs = { query?: string, category?: string }
+type ToolArgs = { request?: string, minPrice?: number, maxPrice?: number }
 
-export const ProductTiles: ToolCallMessagePartComponent<ToolArgs, ShoppingToolResult> = ({ args, result }) => {
-  const target = args.query ?? args.category
-  const labelSuffix = target ? ` for “${target}”` : '';
-
+export const ProductTiles: ToolCallMessagePartComponent<ToolArgs, ShoppingToolResult> = ({ result }) => {
   if (result === undefined) {
     return (
-      <div className={styles.tiles} aria-busy="true" aria-label={`Searching${labelSuffix}`}>
-        {[0, 1, 2].map(i => <div key={i} className={`${styles.tile} ${styles.skeleton}`} />)}
+      <div className={styles.results} aria-busy="true" aria-label="Searching">
+        <div className={styles.tiles}>
+          {[0, 1, 2].map(i => <div key={i} className={`${styles.tile} ${styles.skeleton}`} />)}
+        </div>
       </div>
     )
   }
@@ -25,12 +25,19 @@ export const ProductTiles: ToolCallMessagePartComponent<ToolArgs, ShoppingToolRe
   switch (result.status) {
     case 'ok':
       return (
-        <ul className={styles.tiles} aria-label={`Results${labelSuffix}`}>
-          {result.products.map(product => <ProductTile key={product.id} product={product} />)}
-        </ul>
+        <div className={styles.results}>
+          {result.groups.map(group => (
+            <section key={group.label} className={styles.group} aria-label={group.label}>
+              {result.groups.length > 1 && <h3 className={styles.groupLabel}>{group.label}</h3>}
+              <ul className={styles.tiles}>
+                {group.products.map(product => <ProductTile key={product.id} product={product} />)}
+              </ul>
+            </section>
+          ))}
+        </div>
       )
-    case 'empty':
-      return <p className={styles.note}>No products found{labelSuffix}.</p>
+    case 'no_match':
+      return <p className={styles.note}>No matching products found.</p>
     case 'catalog_unavailable':
       return <p className={`${styles.note} ${styles.error}`} role="alert">The catalog is unavailable right now.</p>
   }
@@ -41,8 +48,9 @@ function ProductTile({ product }: { product: ProductListing }) {
     <li className={styles.tile}>
       <img className={styles.image} src={product.imageUrl} alt="" loading="lazy" />
       <div className={styles.body}>
-        <h3 className={styles.title}>{product.title}</h3>
+        <h4 className={styles.title}>{product.title}</h4>
         <p className={styles.price}>{formatPrice(product.price, product.currency)}</p>
+        {product.shippingInformation && <p className={styles.shipping}>{product.shippingInformation}</p>}
         <p className={styles.description}>{product.description}</p>
       </div>
     </li>
