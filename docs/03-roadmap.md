@@ -83,12 +83,16 @@ Phase record: [05-phase-2-shopping-core.md](05-phase-2-shopping-core.md).
 
 ## Phase 2b — Shopping refinement `[ ]`
 
+> **Deferred (2026-11-04):** 2b comes after the core: persistence & sessions (phase 3) and the HTTP API & client (phase 5). The more complex queries need more design thought than the MVP needs. The phase numbers stay as they are.
+
 **Goal:** the features cut from phase 2, built on the same grounding and empty-state behaviour.
 
-**Decide first: the data strategy.** It shapes filtering, caching and the ambiguous-category fix (`tops`, see 05 "Known issues"):
-- **Store the catalog locally:** filter in code over the local copy; recategorise or rename misleading categories.
-- **Light pre-fetch:** fetch one or two items per category at startup, so the model sees what each category holds.
-- **Live, large, changing API (no pre-fetch):** check results against the request after the query, then fetch another page or treat the result as empty / out of stock.
+**Data strategy: decided (2026-11-04).** dummyjson is treated as a stand-in for a **large, live, changing catalog API** (stock, sales and discounts change). We must not overload it or mirror it locally. So:
+- ~~**Store the catalog locally:** filter in code over the local copy; recategorise or rename misleading categories.~~ Rejected: no full local copy.
+- ~~**Light pre-fetch:** fetch one or two items per category at startup, so the model sees what each category holds.~~ Rejected: no bulk pre-fetch.
+- **Live API:** queries go to the API. Results are checked against the request after the query, then we fetch another page or treat the result as empty / out of stock. Any caching is short-lived and per query, never a mirror.
+
+The detailed design (filtering, paging, the `tops` fix) is left for 2b's own planning session.
 
 **Scope**
 - Price filters and sorting, with **filtering in code** (the API has no price range). Contextual refinement: "too expensive, something cheaper" sets `maxPrice` from previous results.
@@ -96,7 +100,7 @@ Phase record: [05-phase-2-shopping-core.md](05-phase-2-shopping-core.md).
 - Unsupported attributes: "do they have it in pink?". There are no variants in the data; say so honestly.
 - Stock / shipping filters: "only in stock", "ships to me".
 - Product details: `getProduct(id)`, plus the warranty, shipping and return fields (added back to the product model).
-- Catalog caching or pre-fetching behind the `ProductRepository` interface, as the data strategy requires.
+- Short-lived, per-query caching behind the `ProductRepository` interface, if paging and post-query checks need it (no catalog mirror).
 - Fix for ambiguous categories (`tops`), following the data strategy.
 - Eval cases for each: budget refinement, unsupported attribute, category confusion.
 
@@ -104,25 +108,27 @@ Phase record: [05-phase-2-shopping-core.md](05-phase-2-shopping-core.md).
 - [ ] Domain unit tests for filtering and sorting pass.
 - [ ] New eval cases pass ≥ 4/5, and the phase 2 cases still do.
 
-## Phase 3 — Persistence & sessions `[ ]`
+## Phase 3 — Persistence & sessions `[x]`
+
+Phase record: [06-phase-3-persistence-sessions.md](06-phase-3-persistence-sessions.md).
 
 **Goal:** chats survive restarts. The schema is multi-user from day one.
 
 **Scope**
 - Confirm the SQLite driver (libsql is the default) and check it on Windows.
-- Drizzle schema + migrations for `users`, `chats`, `messages` (stores `UIMessage`s with tool parts), and `chat_summaries` (the table only for now).
+- Drizzle schema + migrations for `users`, `chats` and `messages` (stores `UIMessage`s with tool parts). *(2026-11-04: `chat_summaries` moved to phase 4, whose migration adds it when something uses it.)*
 - A **default user** is created on first run. All data is scoped by `user_id`.
-- Save on finish: the user message, then the assistant message in `onFinish`.
-- CLI session commands: new chat, list chats, resume chat by id or index. Optionally generate a chat title from the first message.
-- Step log moves to a table (optional).
+- Save on finish: the user message and the assistant message together, in one transaction, once the turn succeeds.
+- CLI session commands: `/sessions` (list), `/sessions <n|id>` (switch), `/new`. A chat title is generated after the first turn.
+- Step log moves to a table (optional). *Not done: the JSONL file is still enough.*
 
 **Done when**
-- [ ] Store tests pass: create / list / load / append, scoping by `user_id`, and a full round-trip of tool parts.
-- [ ] A resumed chat continues correctly. The model sees prior tool results and refinements still work after a restart.
-- [ ] Works on Windows.
+- [x] Store tests pass: create / list / load / append, scoping by `user_id`, and a full round-trip of tool parts.
+- [x] A resumed chat continues correctly. The model sees prior tool results and refinements still work after a restart.
+- [x] Works on Windows (checked by the user, 2026-11-04).
 
 **Open questions**
-- Should the CLI keep the "first message picks a session" UX, or switch to explicit commands (`/new`, `/list`, `/open`)?
+- ~~Should the CLI keep the "first message picks a session" UX, or switch to explicit commands (`/new`, `/list`, `/open`)?~~ **Explicit commands** (2026-11-04). Startup opens a new chat; `/sessions` lists and switches.
 
 ## Phase 4 — Context management `[ ]`
 
@@ -132,7 +138,7 @@ Phase record: [05-phase-2-shopping-core.md](05-phase-2-shopping-core.md).
 - Context view builder in `prepareStep`. Layers are applied in order (see 02 §7):
   1. slim tool outputs (already done in phase 2)
   2. prune old tool results (`pruneMessages`)
-  3. incremental summary + recent window, using the `summarizer` role and stored in `chat_summaries`
+  3. incremental summary + recent window, using the `summarizer` role and stored in `chat_summaries` (this phase's migration adds the table). `agent/summarize.ts` from phase 3 can gain a compaction purpose
 - Token budget and thresholds are configurable.
 - Fixtures of long conversations, recorded from real phase 2–3 chats in the DB.
 

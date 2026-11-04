@@ -1,18 +1,28 @@
 import { convertArrayToReadableStream } from 'ai/test'
-import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
+import type { LanguageModelV4GenerateResult, LanguageModelV4StreamPart } from '@ai-sdk/provider'
 
 /** Scripted streams for `MockLanguageModelV4` — one per model call ("step"). */
 
 type Usage = { input: number, output: number }
 
-function finish(reason: 'stop' | 'tool-calls', usage: Usage): LanguageModelV4StreamPart {
+function usageOf(usage: Usage) {
   return {
-    type: 'finish',
-    finishReason: { unified: reason, raw: reason },
-    usage: {
-      inputTokens:  { total: usage.input,  noCache: usage.input, cacheRead: 0, cacheWrite: 0 },
-      outputTokens: { total: usage.output, text: usage.output,   reasoning: 0 },
-    },
+    inputTokens: { total: usage.input, noCache: usage.input, cacheRead: 0, cacheWrite: 0 },
+    outputTokens: { total: usage.output, text: usage.output, reasoning: 0 },
+  }
+}
+
+function finish(reason: 'stop' | 'tool-calls', usage: Usage): LanguageModelV4StreamPart {
+  return { type: 'finish', finishReason: { unified: reason, raw: reason }, usage: usageOf(usage) }
+}
+
+/** A non-streaming text reply, for `doGenerate` (e.g. `generateText` in the summarizer). */
+export function generatedText(text: string, usage: Usage = { input: 10, output: 5 }): LanguageModelV4GenerateResult {
+  return {
+    content: [{ type: 'text', text }],
+    finishReason: { unified: 'stop', raw: 'stop' },
+    usage: usageOf(usage),
+    warnings: [],
   }
 }
 

@@ -50,7 +50,7 @@ export async function converse(userTurns: string[]): Promise<TurnRecord[]> {
   for (const user of userTurns) {
     const record: TurnRecord = { user, reply: '', toolCalls: [], results: [] }
 
-    const turn = session.send(user)
+    const turn = await session.send(user)
     for await (const part of turn.fullStream) {
       if (part.type === 'text-delta') record.reply += part.text
       if (part.type === 'tool-call') record.toolCalls.push({ toolName: part.toolName, input: part.input as Record<string, unknown> })

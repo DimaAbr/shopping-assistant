@@ -159,6 +159,8 @@ dummyjson is small and simple. Its limits drive the tool design more than prompt
 > - **Trimmed product model:** id, title, description, category, price, rating, brand, thumbnail. Fields we don't model are stripped, so the agent has no data to make claims about stock, warranty or shipping.
 > - **Tools return a status** (`ok` / `empty` / `catalog_unavailable`) instead of throwing.
 
+> **Note (2026-11-04): data strategy decided.** dummyjson is treated as a stand-in for a **large, live, changing catalog API** whose stock, sales and discounts change, and which we must not overload. There's **no local mirror and no bulk pre-fetch**: "caching the whole catalog at startup" above is no longer an option, and neither is semantic search over a cached copy. Filtering stays "fetch, then filter and check in code", with paging when a page doesn't satisfy the request. Short-lived per-query caching is still allowed. The detailed design is in phase 2b, which is deferred until after phases 3 and 5 (03).
+
 ## 6. Persistence — SQLite (libsql) + Drizzle
 
 **Decision**
@@ -187,6 +189,11 @@ dummyjson is small and simple. Its limits drive the tool design more than prompt
 
 - Store the **full** message list, including tool calls and tool results. Correct replay and product-tile rendering from history both need them.
 - The answer to disconnects is in §8.
+
+> **Note (2026-11-04, phase 3):** driver confirmed: **libsql** (`@libsql/client` 0.18) + **Drizzle** (`drizzle-orm` 0.45, `drizzle-kit` 0.31), checked on Node 26 / Linux. Details are in [06-phase-3-persistence-sessions.md](06-phase-3-persistence-sessions.md).
+> - Built now: `users`, `chats`, `messages` (+ `seq` for ordering). `chat_summaries` arrives with phase 4.
+> - `messages` stores **`UIMessage`s**, and the chat session's in-memory history is `UIMessage[]` too (see §14.7). The model view is derived per turn with `convertToModelMessages(…, { tools })`.
+> - A new chat is stored on its first successful turn: the chat row and its first messages go in one transaction. The `summarizer` role then titles it in the background.
 
 ## 7. Context model
 
@@ -347,3 +354,12 @@ This is a record of where the original plan's assumptions were wrong or changed 
 | 2 | An unknown category would be an API error. | `/products/category/{unknown}` returns an empty list. | `browseCategory` takes a zod enum of real slugs. |
 | 3 | evalite would be the eval runner (§11). | evalite 0.19 targets vitest 4 and `@ai-sdk/provider` v2, and needs `better-sqlite3` (native, rejected in §6). | A small harness on plain vitest in `evals/` (05 "Evals"). |
 | 4 | Category slugs say what's in them. | `tops` holds girls' frocks and dresses. The agent sometimes suggests "tops" for a boy. | Known issue, open in 03 phase 2. |
+
+### 14.7 Phase 3 (2026-11-04)
+
+| # | Assumption | What's actually the case | What changed |
+|---|---|---|---|
+| 1 | Session history as `ModelMessage[]` keeps the full tool result (with thumbnails) for the UI later (05 "Decisions"). | A `ModelMessage` tool-result part holds the **model-facing output**, after `toModelOutput`. The thumbnails were already gone from history. | History and storage are **`UIMessage[]`**. Their tool parts keep the raw `execute` output, and `convertToModelMessages(…, { tools })` applies `toModelOutput` when the model view is built. A test checks both sides: the stored part has the thumbnail, the prompt doesn't. |
+| 2 | Stored history is provider-neutral. | With `gpt-6-luna` (Responses API), assistant messages carry **`reasoning` parts with OpenAI `reasoningEncryptedContent`** and provider item ids. They are about 1.8 KB per step, and they are replayed to the model on later turns (which keeps reasoning continuity). | Kept as they are for now. Revisit in phase 4: the view builder could drop old reasoning parts. Also revisit when the chat model or provider changes, since old provider metadata may need stripping. |
+| 3 | Persistence would hook into `onFinish`. | In v7 the UI message is built by `toUIMessageStream({ originalMessages, onEnd })`, and `onEnd` only fires if that stream is read. | The session tees the UI stream: it drains one branch itself, so turns are saved even when the adapter (CLI) only reads `fullStream`. The other branch is exposed as `turn.uiStream` for phase 5. |
+

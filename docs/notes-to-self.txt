@@ -16,7 +16,7 @@ Complex cases need more planning...
     Can I come up with some middleground with partial background caching? Do I want to?
 
 Topics for tomorrow morning - MVP:
-    Sessions: SQLite
+    ✅ Sessions: SQLite (single user)
     API: Hono
     Standard client: ai-sdk chatbot components? useChat + react?
     Product tiles: structured response + UI?
@@ -35,5 +35,5 @@ Fun stuff for later:
 
 ❗ To Read up:
     Alternatives to evalite.
-    Not a fan of custom test harness in code.
-    Doubly not a fan for the (most complex) live agent tests...
+        Not a fan of custom test harness in code.
+        Doubly not a fan for the (most complex) live agent tests...

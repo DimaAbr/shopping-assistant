@@ -72,10 +72,10 @@ describe('dummyjson repository', () => {
 
   describe('turns failures into CatalogUnavailableError', () => {
     const cases: Array<[string, (url: URL) => Response | Promise<Response>]> = [
-      ['HTTP 500',          () => json({ message: 'boom' }, 500)],
-      ['network error',     () => { throw new TypeError('fetch failed') }],
-      ['invalid JSON',      () => new Response('<html>oops</html>', { status: 200 })],
-      ['unexpected shape',  () => json({ items: [] })],
+      ['HTTP 500', () => json({ message: 'boom' }, 500)],
+      ['network error', () => { throw new TypeError('fetch failed') }],
+      ['invalid JSON', () => new Response('<html>oops</html>', { status: 200 })],
+      ['unexpected shape', () => json({ items: [] })],
     ]
 
     for (const [name, respond] of cases) {

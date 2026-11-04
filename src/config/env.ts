@@ -22,6 +22,8 @@ const EnvSchema = z.object({
   STEP_LOG_PATH: z.string().min(1).default('logs/steps.jsonl'),
 
   DUMMYJSON_BASE_URL: z.url().default('https://dummyjson.com'),
+
+  DATABASE_URL: z.string().min(1).default('file:data/shopping.db'),
 })
 
 export type Config = {
@@ -30,6 +32,7 @@ export type Config = {
   maxSteps: number
   stepLogPath: string
   catalogBaseUrl: string
+  databaseUrl: string
 }
 
 export function loadConfig(envFile = '.env'): Config {
@@ -51,5 +54,6 @@ export function loadConfig(envFile = '.env'): Config {
     maxSteps: env.MAX_STEPS,
     stepLogPath: env.STEP_LOG_PATH,
     catalogBaseUrl: env.DUMMYJSON_BASE_URL,
+    databaseUrl: env.DATABASE_URL,
   }
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
+import type { UIMessage } from 'ai'
 
 import { createChatSession } from '../../src/agent/chat.ts'
 import { createShoppingTools } from '../../src/agent/tools.ts'
@@ -11,10 +12,10 @@ function newSession(model: MockLanguageModelV4) {
   const sink = memorySink()
   const session = createChatSession({
     model,
-    chatId:       'chat-1',
+    chatId: 'chat-1',
     instructions: 'be nice',
-    maxSteps:     3,
-    logSink:      sink,
+    maxSteps: 3,
+    logSink: sink,
   })
   return { session, sink }
 }
@@ -24,7 +25,7 @@ describe('chat session', () => {
     const model = new MockLanguageModelV4({ doStream: [textReply(['Hel', 'lo', '!'])] })
     const { session } = newSession(model)
 
-    const turn = session.send('hi')
+    const turn = await session.send('hi')
     expect(await collect(turn.textStream)).toBe('Hello!')
     await turn.done
   })
@@ -36,7 +37,7 @@ describe('chat session', () => {
     const { session } = newSession(model)
 
     for (const text of ['my name is Dima', 'what is my name?']) {
-      const turn = session.send(text)
+      const turn = await session.send(text)
       await collect(turn.textStream)
       await turn.done
     }
@@ -53,18 +54,18 @@ describe('chat session', () => {
     const model = new MockLanguageModelV4({ doStream: [textReply(['ok'], { input: 12, output: 3 })] })
     const { session, sink } = newSession(model)
 
-    const turn = session.send('hi')
+    const turn = await session.send('hi')
     await collect(turn.textStream)
     await turn.done
 
     expect(sink.records).toHaveLength(1)
     expect(sink.records[0]).toMatchObject({
-      chatId:          'chat-1',
-      turn:            1,
-      step:            0,
-      finishReason:    'stop',
-      usage:           { input: 12, output: 3, total: 15 },
-      toolCalls:       [],
+      chatId: 'chat-1',
+      turn: 1,
+      step: 0,
+      finishReason: 'stop',
+      usage: { input: 12, output: 3, total: 15 },
+      toolCalls: [],
       toolResultBytes: 0,
     })
     expect(sink.records[0]!.latencyMs).toBeGreaterThanOrEqual(0)
@@ -76,7 +77,7 @@ describe('chat session', () => {
     })
     const { session } = newSession(model)
 
-    const turn = session.send('hi')
+    const turn = await session.send('hi')
     await collect(turn.textStream)
     await expect(turn.done).rejects.toThrow('provider down')
     expect(session.history).toEqual([])
@@ -89,17 +90,17 @@ describe('chat session with shopping tools', () => {
     const sink = memorySink()
     const session = createChatSession({
       model,
-      chatId:       'chat-1',
+      chatId: 'chat-1',
       instructions: 'be nice',
-      tools:        createShoppingTools(repo, categories),
-      maxSteps:     options.maxSteps ?? 3,
-      logSink:      sink,
+      tools: createShoppingTools(repo, categories),
+      maxSteps: options.maxSteps ?? 3,
+      logSink: sink,
     })
     return { session, sink, repo }
   }
 
-  async function runTurn(session: { send(text: string): { textStream: AsyncIterable<string>, done: Promise<void> } }, text: string) {
-    const turn = session.send(text)
+  async function runTurn(session: { send(text: string): Promise<{ textStream: AsyncIterable<string>, done: Promise<void> }> }, text: string) {
+    const turn = await session.send(text)
     const reply = await collect(turn.textStream)
     await turn.done
     return reply
@@ -114,7 +115,9 @@ describe('chat session with shopping tools', () => {
     expect(await runTurn(session, 'show me lipstick')).toBe('Red Lipstick — $12.99')
 
     expect(repo.calls).toEqual([{ method: 'search', args: ['lipstick', 5] }])
-    expect(session.history.map(m => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant'])
+    // One UI message per side; the tool call + result are parts of the assistant message.
+    expect(session.history.map(m => m.role)).toEqual(['user', 'assistant'])
+    expect(session.history[1]!.parts.map(p => p.type)).toContain('tool-searchProducts')
     expect(sink.records.map(r => r.toolCalls)).toEqual([[{ toolName: 'searchProducts', input: { query: 'lipstick' } }], []])
   })
 
@@ -175,5 +178,112 @@ describe('chat session with shopping tools', () => {
 
     const prompt = model.doStreamCalls[2]!.prompt
     expect(prompt.map(m => m.role)).toEqual(['system', 'user', 'assistant', 'tool', 'assistant', 'user'])
+  })
+})
+
+describe('chat session persistence hooks', () => {
+  function persistingSession(model: MockLanguageModelV4, options: { initialMessages?: UIMessage[], onTurnEnd?: (m: UIMessage[]) => Promise<void> } = {}) {
+    const saved: UIMessage[][] = []
+    const session = createChatSession({
+      model,
+      chatId: 'chat-1',
+      instructions: 'be nice',
+      tools: createShoppingTools(createFakeRepository(), categories),
+      maxSteps: 3,
+      logSink: memorySink(),
+      initialMessages: options.initialMessages,
+      onTurnEnd: options.onTurnEnd ?? (async messages => { saved.push(messages) }),
+    })
+    return { session, saved }
+  }
+
+  it('passes [user, assistant] to onTurnEnd on success', async () => {
+    const model = new MockLanguageModelV4({ doStream: [textReply(['Hello!'])] })
+    const { session, saved } = persistingSession(model)
+
+    const turn = await session.send('hi')
+    await collect(turn.textStream)
+    await turn.done
+
+    expect(saved).toHaveLength(1)
+    expect(saved[0]!.map(m => m.role)).toEqual(['user', 'assistant'])
+    expect(saved[0]![0]!.parts).toEqual([{ type: 'text', text: 'hi' }])
+    expect(saved[0]![1]!.id).toBeTruthy()
+    expect(saved[0]).toEqual(session.history)
+  })
+
+  it('does not call onTurnEnd when the model errors', async () => {
+    const model = new MockLanguageModelV4({ doStream: async () => { throw new Error('provider down') } })
+    const { session, saved } = persistingSession(model)
+
+    const turn = await session.send('hi')
+    await expect(turn.done).rejects.toThrow('provider down')
+    expect(saved).toEqual([])
+  })
+
+  it('rolls back history when onTurnEnd fails', async () => {
+    const model = new MockLanguageModelV4({ doStream: [textReply(['Hello!'])] })
+    const { session } = persistingSession(model, { onTurnEnd: async () => { throw new Error('disk full') } })
+
+    const turn = await session.send('hi')
+    await expect(turn.done).rejects.toThrow('disk full')
+    expect(session.history).toEqual([])
+  })
+
+  it('stores the full tool output, while the model only sees the slim view', async () => {
+    const model = new MockLanguageModelV4({
+      doStream: [toolCallReply('searchProducts', { query: 'lipstick' }), textReply(['Red Lipstick — $12.99'])],
+    })
+    const { session, saved } = persistingSession(model)
+
+    const turn = await session.send('show me lipstick')
+    await turn.done
+
+    const toolPart = saved[0]![1]!.parts.find(p => p.type === 'tool-searchProducts')
+    expect(toolPart).toMatchObject({ state: 'output-available', input: { query: 'lipstick' }, output: { status: 'ok' } })
+    expect(JSON.stringify(toolPart)).toContain('thumbnail')
+    expect(JSON.stringify(model.doStreamCalls[1]!.prompt)).not.toContain('thumbnail')
+  })
+
+  it('resumes from initialMessages: the model sees prior tool results, turn numbers continue', async () => {
+    // Record a turn with a tool call, then start a new session from what was saved.
+    const first = new MockLanguageModelV4({
+      doStream: [toolCallReply('browseCategory', { category: 'smartphones' }), textReply(['Here are some phones.'])],
+    })
+    const { session: original, saved } = persistingSession(first)
+    await (await original.send('show me smartphones')).done
+    const stored = JSON.parse(JSON.stringify(saved.flat())) as UIMessage[]   // as if read back from the DB
+
+    const second = new MockLanguageModelV4({ doStream: [textReply(['The first one is the cheapest.'])] })
+    const sink = memorySink()
+    const resumed = createChatSession({
+      model: second,
+      chatId: 'chat-1',
+      tools: createShoppingTools(createFakeRepository(), categories),
+      maxSteps: 3,
+      logSink: sink,
+      initialMessages: stored,
+    })
+    await (await resumed.send('which is cheapest?')).done
+
+    const prompt = second.doStreamCalls[0]!.prompt
+    expect(prompt.map(m => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant', 'user'])
+    expect(JSON.stringify(prompt.find(m => m.role === 'tool'))).toContain('"shown"')
+    expect(sink.records[0]!.turn).toBe(2)
+    expect(resumed.history).toHaveLength(4)
+  })
+
+  it('exposes the UI message stream for adapters', async () => {
+    const model = new MockLanguageModelV4({ doStream: [textReply(['Hel', 'lo'])] })
+    const { session } = persistingSession(model)
+
+    const turn = await session.send('hi')
+    const chunks: string[] = []
+    for await (const chunk of turn.uiStream) chunks.push(chunk.type)
+    await turn.done
+
+    expect(chunks).toContain('start')
+    expect(chunks).toContain('text-delta')
+    expect(chunks.at(-1)).toBe('finish')
   })
 })

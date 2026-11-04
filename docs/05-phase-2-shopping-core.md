@@ -13,7 +13,7 @@ Phase 2 was **cut down** (2026-11-03) to the core loop: intent → query → too
 | `getProduct` | **Dropped for this phase** | With the trimmed product model, search results already carry every field we model. Returns in 2b with product details |
 | `listCategories` tool | **None.** Categories go into the prompt and the enum | 24 slugs, fetched once at startup by the CLI |
 | Product model | id, title, description, category, price, rating, brand?, thumbnail. **Everything else is stripped on parse** | Stock, warranty, shipping, returns, reviews and images aren't modelled, so the agent has nothing to make claims about. The prompt tells it to say so |
-| What the model sees | Product **without `thumbnail`**, plus `total` and `shown` | The full result (with thumbnail) stays in history for the UI later |
+| What the model sees | Product **without `thumbnail`**, plus `total` and `shown` | The full result (with thumbnail) stays in history for the UI later. *Correction (2026-11-04): it didn't, because `ModelMessage` history holds the model output. Fixed in phase 3 by storing `UIMessage`s, see 02 §14.7* |
 | Tool errors | Tools **return a `status`** (`ok` / `empty` / `catalog_unavailable`) instead of throwing | An unambiguous signal the model reports, instead of a raw error it might paper over. Unexpected errors (bugs) still throw |
 | Step limit | `prepareStep` sets **`toolChoice: 'none'` on the last allowed step** | A turn always ends in text, never on an unanswered tool call |
 | Vague requests | **Ask first**, as 2–3 concrete category suggestions. If still vague, browse 1–3 plausible categories | Decided with the user during planning |
