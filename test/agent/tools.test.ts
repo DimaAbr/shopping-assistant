@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { createShoppingTools, DEFAULT_LIMIT, toModelOutput, type ShoppingToolResult } from '../../src/agent/tools.ts'
-import { categories, createFakeRepository, lipstick, unavailable } from '../helpers/fake-repository.ts'
+import { createShoppingTools, DEFAULT_LIMIT, ShoppingToolResultSchema, toModelOutput, type ShoppingToolResult } from '../../src/agent/tools.ts'
+import { ProductCardSchema } from '../../src/domain/product-card.ts'
+import { categories, createFakeRepository, lipstickListings, unavailable } from '../helpers/fake-repository.ts'
 
 const options = { toolCallId: 'call-1', messages: [], context: {} } as never
 
@@ -16,7 +17,7 @@ describe('shopping tools', () => {
 
     const result = await t.searchProducts.execute!({ query: 'lipstick' }, options) as ShoppingToolResult
 
-    expect(result).toEqual({ status: 'ok', total: 1, products: lipstick.products })
+    expect(result).toEqual({ status: 'ok', total: 1, products: lipstickListings })
     expect(repo.calls).toEqual([{ method: 'search', args: ['lipstick', DEFAULT_LIMIT] }])
   })
 
@@ -28,6 +29,20 @@ describe('shopping tools', () => {
     expect(result).toMatchObject({ status: 'ok', total: 16 })
     expect(result.status === 'ok' && result.products).toHaveLength(2)
     expect(repo.calls).toEqual([{ method: 'listByCategory', args: ['smartphones', 2] }])
+  })
+
+  it('returns products in the widget contract (card fields + model fields)', async () => {
+    const { tools: t } = tools()
+
+    const result = await t.browseCategory.execute!({ category: 'smartphones' }, options)
+
+    const parsed = ShoppingToolResultSchema.parse(result)
+    expect(parsed.status).toBe('ok')
+    for (const product of parsed.status === 'ok' ? parsed.products : []) {
+      expect(ProductCardSchema.safeParse(product).success).toBe(true)
+      expect(product.imageUrl).toMatch(/^https:\/\/cdn\.dummyjson\.com\//)
+      expect(product.currency).toBe('USD')
+    }
   })
 
   it('reports empty results as status "empty"', async () => {
@@ -69,8 +84,8 @@ describe('shopping tools', () => {
 })
 
 describe('model output', () => {
-  it('sends exactly the modelled fields, without the thumbnail', () => {
-    const output = toModelOutput({ status: 'ok', total: 1, products: lipstick.products })
+  it('sends exactly the modelled fields, without the image URL or currency', () => {
+    const output = toModelOutput({ status: 'ok', total: 1, products: lipstickListings })
 
     expect(output).toMatchObject({ status: 'ok', total: 1, shown: 1 })
     const product = output.status === 'ok' ? output.products[0]! : undefined

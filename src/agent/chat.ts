@@ -48,8 +48,11 @@ export type ChatTurn<TOOLS extends ToolSet = ToolSet> = {
   textStream: AsyncIterable<string>
   /** Every stream part (text, tool calls, tool results, …), e.g. for tracing tool use. */
   fullStream: AsyncIterable<TextStreamPart<TOOLS>>
-  /** The UI message stream for this turn (what `useChat` consumes). Optional to read. */
-  uiStream: AsyncIterable<UIMessageChunk>
+  /**
+   * The UI message stream for this turn (what `useChat` consumes). Optional to read,
+   * and safe to cancel: the session reads its own copy, so the turn still finishes and is saved.
+   */
+  uiStream: ReadableStream<UIMessageChunk>
   /** Resolves once the turn is finished, appended to history and passed to `onTurnEnd`; rejects on error. */
   done: Promise<void>
 }

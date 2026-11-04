@@ -24,6 +24,8 @@ const EnvSchema = z.object({
   DUMMYJSON_BASE_URL: z.url().default('https://dummyjson.com'),
 
   DATABASE_URL: z.string().min(1).default('file:data/shopping.db'),
+
+  PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
 })
 
 export type Config = {
@@ -33,6 +35,8 @@ export type Config = {
   stepLogPath: string
   catalogBaseUrl: string
   databaseUrl: string
+  /** HTTP API port (`pnpm api`). */
+  port: number
 }
 
 export function loadConfig(envFile = '.env'): Config {
@@ -55,5 +59,6 @@ export function loadConfig(envFile = '.env'): Config {
     stepLogPath: env.STEP_LOG_PATH,
     catalogBaseUrl: env.DUMMYJSON_BASE_URL,
     databaseUrl: env.DATABASE_URL,
+    port: env.PORT,
   }
 }

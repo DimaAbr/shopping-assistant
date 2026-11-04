@@ -1,4 +1,5 @@
 import { CatalogUnavailableError, type ProductRepository } from '../../src/domain/product-repository.ts'
+import { toProductListing } from '../../src/domain/product-card.ts'
 import { CategoryListSchema, ProductPageSchema, type ProductPage } from '../../src/domain/products.ts'
 import { rawFixture } from './fixtures.ts'
 
@@ -16,6 +17,9 @@ export const categories = CategoryListSchema.parse(rawFixture('category-list'))
 export const lipstick   = ProductPageSchema.parse(rawFixture('search-lipstick'))
 export const phones     = ProductPageSchema.parse(rawFixture('category-smartphones'))
 export const emptyPage: ProductPage = { products: [], total: 0 }
+
+/** The lipstick results as the tools return them. */
+export const lipstickListings = lipstick.products.map(toProductListing)
 
 export async function unavailable(): Promise<never> {
   throw new CatalogUnavailableError('catalog is down (fake)')

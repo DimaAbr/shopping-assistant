@@ -132,6 +132,8 @@ Phase record: [06-phase-3-persistence-sessions.md](06-phase-3-persistence-sessio
 
 ## Phase 4 — Context management `[ ]`
 
+> **Deferred (2026-11-04):** like 2b, this isn't part of the MVP. It comes after the HTTP API (phase 5). The phase numbers stay as they are.
+
 **Goal:** long conversations stay within budget and keep their quality. Stored history is never mutated.
 
 **Scope**
@@ -151,25 +153,32 @@ Phase record: [06-phase-3-persistence-sessions.md](06-phase-3-persistence-sessio
 - Summary trigger: by token count, by message count, or both?
 - Should "user insights" (budget, recipient, tastes) be pulled out as structured state alongside the summary? This could be the seed for `user_memories`.
 
-## Phase 5 — HTTP API & minimal client `[ ]`
+## Phase 5 — HTTP API & minimal client `[~]`
+
+Phase record: [07-phase-5-http-api.md](07-phase-5-http-api.md).
+
+> **Split (2026-11-04):** the API comes first (no users, no MCP, no UI). The minimal client follows as the second half.
 
 **Goal:** the core is reachable over HTTP with streaming, and a basic web client works.
 
-**Scope**
+**Scope: API** `[x]`
 - Hono app with these endpoints:
-  - `POST /chats/:id/messages` (UI message stream via `toUIMessageStreamResponse()`)
+  - `POST /chats/:id/messages` (UI message stream via `createUIMessageStreamResponse({ stream: turn.uiStream })`)
   - `GET /chats`
-  - `POST /chats`
+  - ~~`POST /chats`~~ Dropped (2026-11-04): chat ids are client-generated, so retries can't create duplicate chats (07, "Chat ids").
   - `GET /chats/:id/messages?before=&limit=` (paginated)
-- Disconnect safety: `consumeStream()` + saving in `onFinish`.
-- Product data in responses is JSON with **image URLs**, not base64.
-- Minimal **Vite + React** client using `useChat`: chat list, switching chats, streaming text. Tool parts are shown as raw JSON or plain lists for now.
+- Disconnect safety: ~~`consumeStream()` + saving in `onFinish`~~. The session already drains its own stream branch, so the turn is saved anyway (02 §8 note).
+- Product data in responses is JSON with **image URLs**, not base64. The widget contract is a `ProductCard` inside the tool output (07, "Product card contract").
 - The user is still the default user, passed implicitly.
 
+**Scope: client** `[ ]`
+- Minimal **Vite + React** client using `useChat`: chat list, switching chats, streaming text. Tool parts are shown as raw JSON or plain lists for now.
+
 **Done when**
-- [ ] API tests (Hono's test client + mock model) pass: streaming, persistence, pagination, and a client that disconnects mid-stream still gets the full message saved.
-- [ ] Manual end-to-end check: open the client, chat, switch chats, reload, and history is intact.
-- [ ] Works on Windows.
+- [x] API tests (Hono's test client + mock model) pass: streaming, persistence, pagination, and a client that disconnects mid-stream still gets the full message saved.
+- [x] The eval set is unchanged by the tool-output change: 12/13 before and after (only the known `tops` case, 3/5).
+- [ ] Manual end-to-end check: open the client, chat, switch chats, reload, and history is intact. *(The API side was checked with curl against the live model.)*
+- [ ] Works on Windows. *(API half checked by the user, 2026-11-04: tests, `pnpm chat` and `pnpm api`. Still needs a check once the client exists.)*
 
 ## Phase 6 — Product UI `[ ]`
 

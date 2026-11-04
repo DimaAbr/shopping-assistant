@@ -131,7 +131,7 @@ describe('chat session with shopping tools', () => {
     const toolMessage = JSON.stringify(model.doStreamCalls[1]!.prompt.find(m => m.role === 'tool'))
     expect(toolMessage).toContain('Red Lipstick')
     expect(toolMessage).toContain('"shown":1')
-    expect(toolMessage).not.toContain('thumbnail')
+    expect(toolMessage).not.toContain('imageUrl')
   })
 
   it('tells the model when the catalog is unavailable', async () => {
@@ -241,8 +241,8 @@ describe('chat session persistence hooks', () => {
 
     const toolPart = saved[0]![1]!.parts.find(p => p.type === 'tool-searchProducts')
     expect(toolPart).toMatchObject({ state: 'output-available', input: { query: 'lipstick' }, output: { status: 'ok' } })
-    expect(JSON.stringify(toolPart)).toContain('thumbnail')
-    expect(JSON.stringify(model.doStreamCalls[1]!.prompt)).not.toContain('thumbnail')
+    expect(JSON.stringify(toolPart)).toContain('imageUrl')
+    expect(JSON.stringify(model.doStreamCalls[1]!.prompt)).not.toContain('imageUrl')
   })
 
   it('resumes from initialMessages: the model sees prior tool results, turn numbers continue', async () => {

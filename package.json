@@ -9,6 +9,7 @@
   "packageManager": "pnpm@12.16.1",
   "scripts": {
     "chat": "tsx src/adapters/cli/main.ts",
+    "api": "tsx src/adapters/http/main.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -17,9 +18,11 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.106",
+    "@hono/node-server": "^2.1.6",
     "@libsql/client": "^0.18.0",
     "ai": "^7.0.159",
     "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.16",
     "zod": "^4.6.7"
   },
   "devDependencies": {

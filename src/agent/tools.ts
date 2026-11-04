@@ -1,7 +1,8 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { CatalogUnavailableError, type ProductRepository } from '../domain/product-repository.ts'
-import type { Product, ProductPage } from '../domain/products.ts'
+import { ProductListingSchema, toProductListing, type ProductListing } from '../domain/product-card.ts'
+import type { ProductPage } from '../domain/products.ts'
 
 /**
  * The shopping tools (05, "Tools").
@@ -10,20 +11,29 @@ import type { Product, ProductPage } from '../domain/products.ts'
  * always gets an unambiguous signal ("nothing matched", "catalog is down")
  * to report — rather than a raw error it might paper over.
  *
- * The tool result keeps the full `Product` (incl. thumbnail) for the UI later;
+ * The tool result is the widget contract (`ShoppingToolResultSchema`): each
+ * product is a `ProductListing`, i.e. a `ProductCard` plus the fields the model
+ * uses. It reaches clients unchanged, live on the UI stream and from history.
  * `toModelOutput` decides what the model actually sees.
  */
 
 export const DEFAULT_LIMIT = 5
-export const MAX_LIMIT     = 10
+export const MAX_LIMIT = 10
 
-export type ShoppingToolResult =
-  | { status: 'ok', total: number, products: Product[] }
-  | { status: 'empty' }
-  | { status: 'catalog_unavailable' }
+/**
+ * The output of both shopping tools: what `tool-searchProducts` /
+ * `tool-browseCategory` parts carry as `output` (07, "Product card contract").
+ */
+export const ShoppingToolResultSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('ok'), total: z.number().int(), products: z.array(ProductListingSchema) }),
+  z.object({ status: z.literal('empty') }),
+  z.object({ status: z.literal('catalog_unavailable') }),
+])
 
-/** What the model sees of one product. */
-export type ModelProduct = Omit<Product, 'thumbnail'>
+export type ShoppingToolResult = z.infer<typeof ShoppingToolResultSchema>
+
+/** What the model sees of one product: no image URL, no currency (all prices are USD). */
+export type ModelProduct = Pick<ProductListing, 'id' | 'title' | 'description' | 'category' | 'price' | 'rating' | 'brand'>
 
 export type ModelToolOutput =
   | { status: 'ok', total: number, shown: number, products: ModelProduct[] }
@@ -73,7 +83,7 @@ async function run(fetchPage: () => Promise<ProductPage>): Promise<ShoppingToolR
   try {
     const page = await fetchPage()
     if (page.products.length === 0) return { status: 'empty' }
-    else return { status: 'ok', total: page.total, products: page.products }
+    else return { status: 'ok', total: page.total, products: page.products.map(toProductListing) }
   } catch (error) {
     if (error instanceof CatalogUnavailableError) return { status: 'catalog_unavailable' }
     throw error
@@ -86,6 +96,19 @@ export function toModelOutput(result: ShoppingToolResult): ModelToolOutput {
     status: 'ok',
     total: result.total,
     shown: result.products.length,
-    products: result.products.map(({ thumbnail: _thumbnail, ...product }) => product),
+    products: result.products.map(toModelProduct),
+  }
+}
+
+/** An explicit whitelist, so a new card field never reaches the model by accident. */
+function toModelProduct(product: ProductListing): ModelProduct {
+  return {
+    id: product.id,
+    title: product.title,
+    description: product.description,
+    category: product.category,
+    price: product.price,
+    rating: product.rating,
+    ...(product.brand === undefined ? {} : { brand: product.brand }),
   }
 }

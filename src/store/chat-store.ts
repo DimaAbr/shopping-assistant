@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, lt, sql } from 'drizzle-orm'
 import type { UIMessage } from 'ai'
 import type { Database } from './db.ts'
 import { chats, messages, users } from './schema.ts'
@@ -21,6 +21,13 @@ export type ChatSummary = {
   firstText: string | null
   createdAt: Date
   updatedAt: Date
+}
+
+export type MessagePage = {
+  /** Chronological order. */
+  messages: UIMessage[]
+  /** Whether older messages exist before this page. */
+  hasMore: boolean
 }
 
 export class ChatNotFoundError extends Error {
@@ -99,12 +106,43 @@ export function createChatStore(db: Database, options: { now?: () => Date } = {}
         .where(eq(messages.chatId, chatId))
         .orderBy(asc(messages.seq))
 
-      return rows.map(row => ({
-        id: row.id,
-        role: row.role,
-        parts: row.parts,
-        ...(row.metadata == null ? {} : { metadata: row.metadata }),
-      }))
+      return rows.map(toUIMessage)
+    },
+
+    /**
+     * The newest `limit` messages before the message `before` (or the newest overall),
+     * in chronological order. `hasMore` says whether older messages exist.
+     * Throws `ChatNotFoundError` if the user doesn't own the chat or `before` isn't one of its messages.
+     */
+    async loadMessagesPage(userId: string, chatId: string, page: { before?: string, limit: number }): Promise<MessagePage> {
+      if (!await ownedChat(userId, chatId)) throw new ChatNotFoundError(chatId)
+
+      let beforeSeq: number | undefined
+      if (page.before !== undefined) {
+        const [anchor] = await db
+          .select({ seq: messages.seq })
+          .from(messages)
+          .where(and(eq(messages.chatId, chatId), eq(messages.id, page.before)))
+
+        if (anchor === undefined) throw new ChatNotFoundError(chatId)
+        beforeSeq = anchor.seq
+      }
+
+      // One extra row tells whether there's an older page.
+      const rows = await db
+        .select()
+        .from(messages)
+        .where(and(
+          eq(messages.chatId, chatId),
+          beforeSeq === undefined ? undefined : lt(messages.seq, beforeSeq),
+        ))
+        .orderBy(desc(messages.seq))
+        .limit(page.limit + 1)
+
+      return {
+        messages: rows.slice(0, page.limit).reverse().map(toUIMessage),
+        hasMore: rows.length > page.limit,
+      }
     },
 
     /**
@@ -162,6 +200,15 @@ export function createChatStore(db: Database, options: { now?: () => Date } = {}
 }
 
 export type ChatStore = ReturnType<typeof createChatStore>
+
+function toUIMessage(row: typeof messages.$inferSelect): UIMessage {
+  return {
+    id: row.id,
+    role: row.role,
+    parts: row.parts,
+    ...(row.metadata == null ? {} : { metadata: row.metadata }),
+  }
+}
 
 function textOf(parts: UIMessage['parts']): string {
   return parts.flatMap(part => part.type === 'text' ? [part.text] : []).join(' ').trim()

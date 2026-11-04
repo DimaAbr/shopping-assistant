@@ -3,7 +3,7 @@ import { MockLanguageModelV4 } from 'ai/test'
 import type { UIMessage } from 'ai'
 
 import { cleanTitle, summarizeChat, TITLE_MAX_LENGTH } from '../../src/agent/summarize.ts'
-import { lipstick } from '../helpers/fake-repository.ts'
+import { lipstick, lipstickListings } from '../helpers/fake-repository.ts'
 import { generatedText } from '../helpers/mock-model.ts'
 
 const exchange: UIMessage[] = [
@@ -18,7 +18,7 @@ const exchange: UIMessage[] = [
         toolCallId: 'call-1',
         state: 'output-available',
         input: { query: 'lipstick' },
-        output: { status: 'ok', total: lipstick.total, products: lipstick.products },
+        output: { status: 'ok', total: lipstick.total, products: lipstickListings },
       },
       { type: 'step-start' },
       { type: 'text', text: 'Red Lipstick — $12.99', state: 'done' },
@@ -39,7 +39,7 @@ describe('summarizeChat (title)', () => {
     const prompt = JSON.stringify(model.doGenerateCalls[0]!.prompt)
     expect(prompt).toContain('user: show me lipstick')
     expect(prompt).toContain('assistant: Red Lipstick — $12.99')
-    expect(prompt).not.toContain('thumbnail')
+    expect(prompt).not.toContain('imageUrl')
     expect(prompt).not.toContain('searchProducts')
     expect(model.doGenerateCalls[0]!.tools).toBeUndefined()
   })

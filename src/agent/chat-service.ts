@@ -5,7 +5,7 @@ import { createChatSession, type ChatSession } from './chat.ts'
 import { summarizeChat } from './summarize.ts'
 
 /**
- * Persistent chats for one user — what the adapters (CLI now, HTTP in phase 5) call.
+ * Persistent chats for one user — what the adapters (CLI, HTTP) call.
  *
  * - `newChat()` is not stored until its first successful turn, so empty chats
  *   never appear in the list. The chat row and the first messages are written
@@ -65,9 +65,12 @@ export function createChatService<TOOLS extends ToolSet = ToolSet>(options: Chat
   return {
     userId,
 
-    /** A fresh chat. Stored on its first successful turn. */
-    newChat(): ChatSession<TOOLS> {
-      return session(generateId(), [])
+    /**
+     * A fresh chat, stored on its first successful turn. The id can come from
+     * the client (07, "Chat ids"); by default one is generated.
+     */
+    newChat(chatId = generateId()): ChatSession<TOOLS> {
+      return session(chatId, [])
     },
 
     /** Resumes a stored chat. Throws `ChatNotFoundError` if this user has no such chat. */
@@ -76,6 +79,10 @@ export function createChatService<TOOLS extends ToolSet = ToolSet>(options: Chat
     },
 
     listChats: () => store.listChats(userId),
+
+    /** A page of stored history, oldest first. Throws `ChatNotFoundError` like `openChat`. */
+    loadMessagesPage: (chatId: string, page: { before?: string, limit: number }) =>
+      store.loadMessagesPage(userId, chatId, page),
 
     /** Resolves when background work (title generation) has finished — e.g. before exiting. */
     async settled(): Promise<void> {

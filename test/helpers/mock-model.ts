@@ -38,6 +38,29 @@ export function textReply(chunks: string[], usage: Usage = { input: 10, output: 
   return { stream: convertArrayToReadableStream(parts) }
 }
 
+/**
+ * A text reply that sends `first`, then waits for `release()` before sending `rest`.
+ * For holding a turn open mid-stream (busy chats, client disconnects).
+ */
+export function gatedTextReply(first: string, rest: string, usage: Usage = { input: 10, output: 5 }) {
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+
+  const stream = new ReadableStream<LanguageModelV4StreamPart>({
+    async start(controller) {
+      controller.enqueue({ type: 'stream-start', warnings: [] })
+      controller.enqueue({ type: 'text-start', id: 't1' })
+      controller.enqueue({ type: 'text-delta', id: 't1', delta: first })
+      await gate
+      controller.enqueue({ type: 'text-delta', id: 't1', delta: rest })
+      controller.enqueue({ type: 'text-end', id: 't1' })
+      controller.enqueue(finish('stop', usage))
+      controller.close()
+    },
+  })
+  return { reply: { stream }, release }
+}
+
 /** A step that only calls one tool. */
 export function toolCallReply(toolName: string, input: unknown, toolCallId = 'call-1', usage: Usage = { input: 10, output: 5 }) {
   const parts: LanguageModelV4StreamPart[] = [

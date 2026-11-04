@@ -30,6 +30,15 @@ Fun stuff for later:
         - Semantic highlights
         - Insights worth persisting
         * Can use Mastra memory tools including observational, semantic, and summarized memory if necessary
+    Concurrency:
+        See if there's a point in triyng to queue user messages instead of a 409
+        Do I want to interleave user messages?
+            Probably no. Turns are straightforward and process concrete searches
+            Interrupts/control messages might be useful
+        Do I want to queue requests instead of returning a 409 if a turn takes too long?
+            User experience would probably feel smoother
+            How would reporting parallel status work?
+        Could be a client-side feature with synchronous server behavior
     Web component embeddable widget ❔
     MCP + MCP Apps/Markdown fallback ❔
 

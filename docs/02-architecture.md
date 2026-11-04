@@ -227,6 +227,10 @@ This is the central concept of the memory work.
 
 **Revisit when** mid-stream resume really matters.
 
+> **Note (2026-11-04): phase 5 API.**
+> - **Disconnects** need no `consumeStream()`. The session already drains its own branch of the teed UI stream (§14.7 #3), so a turn finishes and is saved when the client goes away. The route returns `createUIMessageStreamResponse({ stream: turn.uiStream })`.
+> - **No `POST /chats`: the client generates chat ids.** With a server-created id, a retry after a lost response creates a second chat with the same first message. A client-owned id is fixed before the first request, so retries and replays target the same chat. It's also the `useChat` convention. Details are in 07, "Chat ids".
+
 ## 9. Client UI
 
 **Decision**
@@ -234,6 +238,8 @@ This is the central concept of the memory work.
 - **Product tiles** come from rendering **tool parts**: a `tool-searchProducts` part maps to a `<ProductTiles>` component. In current AI SDK terms, this is what "generative UI" means.
 - **Images use dummyjson's CDN URLs**, never base64. Base64 bloats the stream, and if it ends up in history it leaks into model context.
 - The **embeddable web-component widget** comes later, as a separate step. First check whether the AI SDK client can be used without React. If it can't, parse the UI message stream (SSE) by hand.
+
+> **Note (2026-11-04): product card contract.** Widget data lives **inside the tool output**. Each product is a `ProductListing`: a `ProductCard` (`id, title, description, price, currency, imageUrl`) plus the fields the model uses. The live stream, stored history and the history endpoint all carry the same shape. The full description is sent, and the widget trims it. Details are in 07, "Product card contract".
 
 **Rejected**
 - **LibreChat:** has its own backend, DB and Docker.

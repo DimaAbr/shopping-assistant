@@ -1,15 +1,7 @@
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
 
-import { loadConfig } from '../../config/env.ts'
-import { createModelRegistry } from '../../agent/models.ts'
-import { createChatService } from '../../agent/chat-service.ts'
-import { buildInstructions } from '../../agent/prompt.ts'
-import { createShoppingTools } from '../../agent/tools.ts'
-import { createDummyJsonRepository } from '../../domain/product-repository.ts'
-import { openDatabase } from '../../store/db.ts'
-import { createChatStore } from '../../store/chat-store.ts'
-import { jsonlFileSink } from '../../observability/step-log.ts'
+import { bootstrap } from '../bootstrap.ts'
 import { HELP, parseCommand, resolveChatRef } from './commands.ts'
 import { chatLabel, dim, formatChatList, formatReplay, traceLine } from './render.ts'
 
@@ -22,25 +14,9 @@ import { chatLabel, dim, formatChatList, formatReplay, traceLine } from './rende
 /** How long `/exit` waits for a pending chat title before giving up on it. */
 const EXIT_GRACE_MS = 5000
 
-const config = loadConfigOrExit()
-const models = createModelRegistry(config)
-const repo = createDummyJsonRepository({ baseUrl: config.catalogBaseUrl })
-const db = await openDatabaseOrExit()
-const store = createChatStore(db)
-const categories = await loadCategoriesOrExit()
-
-const service = createChatService({
-  store,
-  userId: await store.ensureDefaultUser(),
-  model: models.getModel('chat'),
-  summarizer: models.getModel('summarizer'),
-  instructions: buildInstructions(categories),
-  tools: createShoppingTools(repo, categories),
-  maxSteps: config.maxSteps,
-  logSink: jsonlFileSink(config.stepLogPath),
-  // Title failures are harmless (the list falls back to the first message), and
-  // printing mid-prompt would garble the input line — so they're dropped.
-})
+// Title failures are harmless (the list falls back to the first message), and
+// printing mid-prompt would garble the input line — so they're dropped.
+const { config, db, categories, service } = await bootstrap()
 
 let chat = service.newChat()
 
@@ -127,31 +103,4 @@ async function reply(text: string) {
     stdout.write(`\n[error] ${error instanceof Error ? error.message : String(error)} (not saved)`)
   }
   stdout.write('\n')
-}
-
-async function openDatabaseOrExit() {
-  try {
-    return await openDatabase(config.databaseUrl)
-  } catch (error) {
-    console.error(`Can't open the chat database at ${config.databaseUrl}: ${error instanceof Error ? error.message : error}`)
-    process.exit(1)
-  }
-}
-
-async function loadCategoriesOrExit() {
-  try {
-    return await repo.listCategories()
-  } catch (error) {
-    console.error(`Can't load the product categories from ${config.catalogBaseUrl}: ${error instanceof Error ? error.message : error}`)
-    process.exit(1)
-  }
-}
-
-function loadConfigOrExit() {
-  try {
-    return loadConfig()
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : error)
-    process.exit(1)
-  }
 }

@@ -3,7 +3,7 @@ import type { UIMessage } from 'ai'
 
 import { ChatNotFoundError, DEFAULT_USER_ID } from '../../src/store/chat-store.ts'
 import { users } from '../../src/store/schema.ts'
-import { lipstick } from '../helpers/fake-repository.ts'
+import { lipstick, lipstickListings } from '../helpers/fake-repository.ts'
 import { memoryStore } from '../helpers/store.ts'
 
 const user = (id: string, text: string): UIMessage => ({ id, role: 'user', parts: [{ type: 'text', text }] })
@@ -93,7 +93,7 @@ describe('chat store', () => {
           toolCallId: 'call-1',
           state: 'output-available',
           input: { query: 'lipstick' },
-          output: { status: 'ok', total: lipstick.total, products: lipstick.products },
+          output: { status: 'ok', total: lipstick.total, products: lipstickListings },
         },
         { type: 'text', text: 'Here you go.', state: 'done' },
       ],
@@ -102,7 +102,7 @@ describe('chat store', () => {
 
     const [, loaded] = await store.loadMessages(DEFAULT_USER_ID, 'c1')
     expect(loaded).toEqual(withTool)
-    expect(JSON.stringify(loaded)).toContain('thumbnail')
+    expect(JSON.stringify(loaded)).toContain('imageUrl')
   })
 })
 
@@ -129,5 +129,49 @@ describe('chat store: createIfMissing', () => {
     await expect(store.appendMessages(DEFAULT_USER_ID, 'lazy', [user('m1', 'a'), user('m1', 'dup')], { createIfMissing: true }))
       .rejects.toThrow()
     expect(await store.listChats(DEFAULT_USER_ID)).toEqual([])
+  })
+})
+
+describe('chat store: loadMessagesPage', () => {
+  async function storeWithSixMessages() {
+    const store = await storeWithUsers()
+    await store.appendMessages(DEFAULT_USER_ID, 'c1', [user('m1', '1'), assistant('m2', '2')], { createIfMissing: true })
+    await store.appendMessages(DEFAULT_USER_ID, 'c1', [user('m3', '3'), assistant('m4', '4')])
+    await store.appendMessages(DEFAULT_USER_ID, 'c1', [user('m5', '5'), assistant('m6', '6')])
+    return store
+  }
+
+  const ids = (page: { messages: UIMessage[] }) => page.messages.map(m => m.id)
+
+  it('returns the newest messages in chronological order', async () => {
+    const store = await storeWithSixMessages()
+
+    const page = await store.loadMessagesPage(DEFAULT_USER_ID, 'c1', { limit: 4 })
+    expect(ids(page)).toEqual(['m3', 'm4', 'm5', 'm6'])
+    expect(page.hasMore).toBe(true)
+  })
+
+  it('pages backwards with `before`', async () => {
+    const store = await storeWithSixMessages()
+
+    const page = await store.loadMessagesPage(DEFAULT_USER_ID, 'c1', { before: 'm3', limit: 4 })
+    expect(ids(page)).toEqual(['m1', 'm2'])
+    expect(page.hasMore).toBe(false)
+  })
+
+  it('reports no more pages when the limit exactly covers the rest', async () => {
+    const store = await storeWithSixMessages()
+
+    const page = await store.loadMessagesPage(DEFAULT_USER_ID, 'c1', { limit: 6 })
+    expect(ids(page)).toHaveLength(6)
+    expect(page.hasMore).toBe(false)
+  })
+
+  it("scopes by user and rejects a `before` id that isn't in the chat", async () => {
+    const store = await storeWithSixMessages()
+    await store.appendMessages('other', 'c2', [user('x1', 'x')], { createIfMissing: true })
+
+    await expect(store.loadMessagesPage('other', 'c1', { limit: 10 })).rejects.toBeInstanceOf(ChatNotFoundError)
+    await expect(store.loadMessagesPage(DEFAULT_USER_ID, 'c1', { before: 'x1', limit: 10 })).rejects.toBeInstanceOf(ChatNotFoundError)
   })
 })
