@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./contract": "./src/adapters/http/contract.ts"
+  },
   "engines": {
     "node": ">=26"
   },
@@ -14,7 +17,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "eval": "vitest run --config evals/vitest.config.ts",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "web": "pnpm --filter shopping-web dev"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.106",

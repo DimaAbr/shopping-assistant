@@ -16,14 +16,13 @@ async function newService(chat: MockLanguageModelV4, summarizer = new MockLangua
   const errors: unknown[] = []
   const service = createChatService({
     store,
-    userId: DEFAULT_USER_ID,
     model: chat,
     summarizer,
     tools: createShoppingTools(createFakeRepository(), categories),
     maxSteps: 3,
     logSink: memorySink(),
     onBackgroundError: error => { errors.push(error) },
-  })
+  }).forUser(DEFAULT_USER_ID)
   
   return { service, store, summarizer, errors }
 }

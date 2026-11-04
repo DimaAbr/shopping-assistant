@@ -29,9 +29,9 @@ export async function bootstrap(options: Pick<ChatServiceOptions<ShoppingTools>,
     error => `Can't load the product categories from ${config.catalogBaseUrl}: ${message(error)}`,
   )
 
+  const defaultUserId = await store.ensureDefaultUser()
   const service = createChatService({
     store,
-    userId: await store.ensureDefaultUser(),
     model: models.getModel('chat'),
     summarizer: models.getModel('summarizer'),
     instructions: buildInstructions(categories),
@@ -41,7 +41,7 @@ export async function bootstrap(options: Pick<ChatServiceOptions<ShoppingTools>,
     onBackgroundError: options.onBackgroundError,
   })
 
-  return { config, db, categories, service }
+  return { config, db, categories, service, defaultUserId }
 }
 
 async function orExit<T>(run: () => Promise<T>, describe: (error: unknown) => string): Promise<T> {

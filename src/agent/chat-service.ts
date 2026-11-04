@@ -5,11 +5,12 @@ import { createChatSession, type ChatSession } from './chat.ts'
 import { summarizeChat } from './summarize.ts'
 
 /**
- * Persistent chats for one user — what the adapters (CLI, HTTP) call.
+ * Persistent chats — what the adapters (CLI, HTTP) call. `forUser(userId)` gives
+ * one user's chats. Background work (titles) is shared, so `settled()` covers every user.
  *
  * - `newChat()` is not stored until its first successful turn, so empty chats
- *   never appear in the list. The chat row and the first messages are written
- *   in one transaction.
+ *   never appear in the list. The user row (if new), the chat row and the first
+ *   messages are written in one transaction.
  * - After that first turn, a title is generated in the background with the
  *   `summarizer` model. If it fails the chat stays untitled and lists fall back
  *   to its first message; the turn itself is never affected.
@@ -17,7 +18,6 @@ import { summarizeChat } from './summarize.ts'
 
 export type ChatServiceOptions<TOOLS extends ToolSet = ToolSet> = {
   store: ChatStore
-  userId: string
   model: LanguageModel
   summarizer: LanguageModel
   instructions?: string
@@ -29,7 +29,7 @@ export type ChatServiceOptions<TOOLS extends ToolSet = ToolSet> = {
 }
 
 export function createChatService<TOOLS extends ToolSet = ToolSet>(options: ChatServiceOptions<TOOLS>) {
-  const { store, userId } = options
+  const { store } = options
   const background = new Set<Promise<void>>()
 
   function track(task: Promise<void>) {
@@ -37,7 +37,13 @@ export function createChatService<TOOLS extends ToolSet = ToolSet>(options: Chat
     void task.finally(() => background.delete(task))
   }
 
-  function session(chatId: string, initialMessages: Awaited<ReturnType<ChatStore['loadMessages']>>): ChatSession<TOOLS> {
+  /** Resolves when background work (title generation) has finished — e.g. before exiting. */
+  async function settled(): Promise<void> {
+    while (background.size > 0)
+      await Promise.allSettled([...background])
+  }
+
+  function session(userId: string, chatId: string, initialMessages: Awaited<ReturnType<ChatStore['loadMessages']>>): ChatSession<TOOLS> {
     let stored = initialMessages.length > 0
 
     return createChatSession({
@@ -63,33 +69,38 @@ export function createChatService<TOOLS extends ToolSet = ToolSet>(options: Chat
   }
 
   return {
-    userId,
+    /** One user's chats. Nothing is stored for a user until their first chat is. */
+    forUser(userId: string) {
+      return {
+        userId,
 
-    /**
-     * A fresh chat, stored on its first successful turn. The id can come from
-     * the client (07, "Chat ids"); by default one is generated.
-     */
-    newChat(chatId = generateId()): ChatSession<TOOLS> {
-      return session(chatId, [])
+        /**
+         * A fresh chat, stored on its first successful turn. The id can come from
+         * the client (07, "Chat ids"); by default one is generated.
+         */
+        newChat(chatId = generateId()): ChatSession<TOOLS> {
+          return session(userId, chatId, [])
+        },
+
+        /** Resumes a stored chat. Throws `ChatNotFoundError` if this user has no such chat. */
+        async openChat(chatId: string): Promise<ChatSession<TOOLS>> {
+          return session(userId, chatId, await store.loadMessages(userId, chatId))
+        },
+
+        listChats: () => store.listChats(userId),
+
+        /** A page of stored history, oldest first. Throws `ChatNotFoundError` like `openChat`. */
+        loadMessagesPage: (chatId: string, page: { before?: string, limit: number }) =>
+          store.loadMessagesPage(userId, chatId, page),
+
+        /** The service's `settled()`: background work is shared across users. */
+        settled,
+      }
     },
 
-    /** Resumes a stored chat. Throws `ChatNotFoundError` if this user has no such chat. */
-    async openChat(chatId: string): Promise<ChatSession<TOOLS>> {
-      return session(chatId, await store.loadMessages(userId, chatId))
-    },
-
-    listChats: () => store.listChats(userId),
-
-    /** A page of stored history, oldest first. Throws `ChatNotFoundError` like `openChat`. */
-    loadMessagesPage: (chatId: string, page: { before?: string, limit: number }) =>
-      store.loadMessagesPage(userId, chatId, page),
-
-    /** Resolves when background work (title generation) has finished — e.g. before exiting. */
-    async settled(): Promise<void> {
-      while (background.size > 0)
-        await Promise.allSettled([...background])
-    },
+    settled,
   }
 }
 
 export type ChatService<TOOLS extends ToolSet = ToolSet> = ReturnType<typeof createChatService<TOOLS>>
+export type UserChats<TOOLS extends ToolSet = ToolSet> = ReturnType<ChatService<TOOLS>['forUser']>

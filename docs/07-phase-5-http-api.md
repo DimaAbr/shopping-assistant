@@ -65,6 +65,8 @@ Ids are 1–64 characters of `A–Z a–z 0–9 _ -`. A chat owned by another us
 | `GET /chats/:id/messages?before=&limit=` | `{ messages: UIMessage[], hasMore }`. Up to `limit` messages before the message id `before` (or the newest), oldest first. `limit` defaults to 50, max 200. 404 for an unknown chat or `before` id |
 | `POST /chats/:id/messages` | Body `{ message: { role: 'user', parts: [{ type: 'text', text }] } }`. Returns the turn as a UI message stream (SSE, `createUIMessageStreamResponse`). 409 while a turn for this chat is running |
 
+> **Note (2026-11-04, phase 5b):** every route now takes an optional **`X-User-Id`** header. Without it the request acts as the default user, as above. With it, the request acts as that user, who is created with their first chat. It's a trusted placeholder, not auth. Details are in 08, "Identity".
+
 Errors are JSON `{ error }`: 400 for validation, 404 for unknown chats and routes, 409 for busy chats, 500 otherwise. A turn that fails after streaming has started reaches the client as an `error` chunk, is reported via `onTurnError` (logged by `main.ts`) and isn't saved.
 
 ## Behaviour worth knowing

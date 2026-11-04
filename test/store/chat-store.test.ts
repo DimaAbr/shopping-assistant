@@ -24,6 +24,14 @@ describe('chat store', () => {
     expect(await store.db.select().from(users)).toHaveLength(1)
   })
 
+  it('creates an unknown user together with their first chat', async () => {
+    const store = await memoryStore()
+    await store.appendMessages('anon-1', 'c1', [user('u1', 'hi'), assistant('a1', 'hello')], { createIfMissing: true })
+
+    expect(await store.db.select({ id: users.id }).from(users)).toEqual([{ id: 'anon-1' }])
+    expect(await store.loadMessages('anon-1', 'c1')).toHaveLength(2)
+  })
+
   it('creates, appends and loads messages in order', async () => {
     const store = await storeWithUsers()
     await store.createChat(DEFAULT_USER_ID, { id: 'c1' })

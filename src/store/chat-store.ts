@@ -2,33 +2,21 @@ import { and, asc, desc, eq, lt, sql } from 'drizzle-orm'
 import type { UIMessage } from 'ai'
 import type { Database } from './db.ts'
 import { chats, messages, users } from './schema.ts'
+import type { ChatSummary, MessagePage } from './types.ts'
+
+export type { ChatSummary, MessagePage }
 
 /**
  * Chat persistence (02 §6). Persistence only — no model calls, no prompts.
  *
  * Every read and write is scoped by `userId`: a chat id alone never gives
- * access to another user's chat. Until auth (phase 7) there is one user,
- * `DEFAULT_USER_ID`, created on first run.
+ * access to another user's chat. Until auth (phase 7), user ids are trusted as
+ * given (the HTTP `X-User-Id` header, 08). `DEFAULT_USER_ID` is created on first
+ * run for the CLI and for requests without an id; other users are created with
+ * their first stored chat.
  */
 
 export const DEFAULT_USER_ID = 'default'
-
-export type ChatSummary = {
-  id: string
-  /** Generated after the first turn; `null` until then (or if generation failed). */
-  title: string | null
-  /** The first user message's text — a label for chats without a title. */
-  firstText: string | null
-  createdAt: Date
-  updatedAt: Date
-}
-
-export type MessagePage = {
-  /** Chronological order. */
-  messages: UIMessage[]
-  /** Whether older messages exist before this page. */
-  hasMore: boolean
-}
 
 export class ChatNotFoundError extends Error {
   constructor(chatId: string) {
@@ -49,16 +37,21 @@ export function createChatStore(db: Database, options: { now?: () => Date } = {}
     return chat !== undefined
   }
 
+  async function ensureUser(id: string, name = id) {
+    await db
+      .insert(users)
+      .values({ id, name, createdAt: now() })
+      .onConflictDoNothing()
+
+    return id
+  }
+
   return {
     /** Idempotent. */
-    async ensureDefaultUser() {
-      await db
-        .insert(users)
-        .values({ id: DEFAULT_USER_ID, name: 'Default user', createdAt: now() })
-        .onConflictDoNothing()
+    ensureUser,
 
-      return DEFAULT_USER_ID
-    },
+    /** Idempotent. */
+    ensureDefaultUser: () => ensureUser(DEFAULT_USER_ID, 'Default user'),
 
     async createChat(userId: string, chat: { id: string, title?: string | null }) {
       const at = now()
@@ -148,7 +141,8 @@ export function createChatStore(db: Database, options: { now?: () => Date } = {}
     /**
      * Appends after the existing messages, in one transaction, and bumps `updated_at`.
      * With `createIfMissing`, a chat that doesn't exist yet is created in the same
-     * transaction — so a chat is never stored without its first messages.
+     * transaction — so a chat is never stored without its first messages. So is
+     * the user, if they don't exist yet.
      */
     async appendMessages(userId: string, chatId: string, newMessages: readonly UIMessage[], options: { createIfMissing?: boolean } = {}) {
       if (newMessages.length === 0) return
@@ -161,8 +155,11 @@ export function createChatStore(db: Database, options: { now?: () => Date } = {}
           .from(chats)
           .where(eq(chats.id, chatId))
 
-        if (chat === undefined && options.createIfMissing)
+        if (chat === undefined && options.createIfMissing) {
+          // A user (e.g. an anonymous widget id) is created with their first stored chat.
+          await tx.insert(users).values({ id: userId, name: userId, createdAt: at }).onConflictDoNothing()
           await tx.insert(chats).values({ id: chatId, userId, title: null, createdAt: at, updatedAt: at })
+        }
         else if (chat?.userId !== userId)
           throw new ChatNotFoundError(chatId)
 

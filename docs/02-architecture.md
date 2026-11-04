@@ -247,6 +247,14 @@ This is the central concept of the memory work.
 - **assistant-ui:** too much for the small UI we need. Revisit it if the custom UI grows or to make the full-page chat experience more familiar-looking if web components and MCP are descoped.
 - **AI SDK RSC `streamUI`:** tied to Next.js React Server Components, and not the actively developed path.
 
+> **Note (2026-11-04): phase 5b client.** Details are in [08-phase-5b-web-client.md](08-phase-5b-web-client.md).
+> - **assistant-ui is back, as unstyled primitives only**, styled with plain CSS modules. This revises "assistant-ui rejected" above: the goal is now a familiar chat UX without hand-rolling one. Its styled layer and thread list aren't used.
+> - **AI Elements rejected:** it's shadcn/Tailwind-only, and the user doesn't want Tailwind. Plain CSS also suits a shadow-root embed better.
+> - **`useChat` stays the state owner.** `useAISDKRuntime(chat)` wraps it, so assistant-ui only renders.
+> - **Headless core vs. UI.** `web/src/core/` holds config, identity, the API client, the transport and hooks; `web/src/ui/` holds the page. Everything flows from one `ShoppingConfig`, so the later embed (web component or iframe) only maps attributes to it. The "use without React" question is mostly answered: `ai` has a framework-agnostic `Chat` class, and `useChat` binds it to React.
+> - **Identity seam:** an `X-User-Id` header carries the host's user, or an anonymous id kept in `localStorage` (not a cookie: third-party on embeds). The server trusts it until phase 7.
+> - **Product tiles** (phase 6) are done here: `ProductTiles` is registered for both tool names.
+
 ## 10. Interop — MCP (later)
 
 - **What to expose is an open question:**
@@ -369,3 +377,10 @@ This is a record of where the original plan's assumptions were wrong or changed 
 | 2 | Stored history is provider-neutral. | With `gpt-6-luna` (Responses API), assistant messages carry **`reasoning` parts with OpenAI `reasoningEncryptedContent`** and provider item ids. They are about 1.8 KB per step, and they are replayed to the model on later turns (which keeps reasoning continuity). | Kept as they are for now. Revisit in phase 4: the view builder could drop old reasoning parts. Also revisit when the chat model or provider changes, since old provider metadata may need stripping. |
 | 3 | Persistence would hook into `onFinish`. | In v7 the UI message is built by `toUIMessageStream({ originalMessages, onEnd })`, and `onEnd` only fires if that stream is read. | The session tees the UI stream: it drains one branch itself, so turns are saved even when the adapter (CLI) only reads `fullStream`. The other branch is exposed as `turn.uiStream` for phase 5. |
 
+### 14.8 Phase 5b (2026-11-04)
+
+| # | Assumption | What's actually the case | What changed |
+|---|---|---|---|
+| 1 | assistant-ui would replace our state layer with its runtime (§9 "Rejected"). | `@assistant-ui/react-ai-sdk` wraps an existing `useChat` result (`useAISDKRuntime`). Its primitives are unstyled. | assistant-ui primitives render; `useChat` and our core own the state (§9 note, 08). |
+| 2 | The web-component widget needs a check of whether the AI SDK client works without React (§9). | `ai` ships a framework-agnostic `Chat` class; `useChat` is its React binding. | The core/UI split stays React for now. A non-React embed would use `Chat` directly. |
+| 3 | Importing server types into the client is free (types only). | The contract's types reached `store/chat-store.ts` → `db.ts`, which needs Node types, so the client typecheck failed. | `ChatSummary` / `MessagePage` moved to `store/types.ts`; the contract imports only DB-free modules. |

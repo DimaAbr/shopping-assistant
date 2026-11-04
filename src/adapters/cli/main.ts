@@ -16,7 +16,9 @@ const EXIT_GRACE_MS = 5000
 
 // Title failures are harmless (the list falls back to the first message), and
 // printing mid-prompt would garble the input line — so they're dropped.
-const { config, db, categories, service } = await bootstrap()
+const boot = await bootstrap()
+const { config, db, categories } = boot
+const service = boot.service.forUser(boot.defaultUserId)
 
 let chat = service.newChat()
 

@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { createUIMessageStreamResponse, type ToolSet } from 'ai'
 import { z } from 'zod'
@@ -8,7 +8,12 @@ import { ChatNotFoundError } from '../../store/chat-store.ts'
 
 /**
  * The HTTP API (07). A thin adapter: validates input, calls the chat service,
- * maps errors to status codes. The user is the default user, passed implicitly.
+ * maps errors to status codes.
+ *
+ * The user comes from the `X-User-Id` header, or is the default user when it's
+ * absent (08, "Identity"). **This is a placeholder, not auth**: the id is trusted
+ * as given. A host passes its own user id; an anonymous widget sends an opaque id it
+ * generated and kept. A new id becomes a user with its first stored chat.
  *
  * - `GET  /chats`                                    chat list, newest activity first
  * - `GET  /chats/:id/messages?before=&limit=`        a page of stored history (UIMessages)
@@ -24,7 +29,11 @@ import { ChatNotFoundError } from '../../store/chat-store.ts'
 export const DEFAULT_PAGE_LIMIT = 50
 export const MAX_PAGE_LIMIT = 200
 
-const chatIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, 'must be 1–64 characters of A–Z, a–z, 0–9, _ or -')
+/** Request header naming the user (08, "Identity"). */
+export const USER_ID_HEADER = 'x-user-id'
+
+/** Chat ids and user ids: both can be client-generated. */
+const idSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, 'must be 1–64 characters of A–Z, a–z, 0–9, _ or -')
 
 const paginationQuerySchema = z.object({
   before: z.string().min(1).optional(),
@@ -41,6 +50,8 @@ const messagesBodySchema = z.object({
 
 export type ApiOptions<TOOLS extends ToolSet = ToolSet> = {
   service: ChatService<TOOLS>
+  /** Used for requests without an `X-User-Id` header. */
+  defaultUserId: string
   /** A turn that failed after its response started streaming (the client got an error chunk). */
   onTurnError?: (error: unknown, context: { chatId: string }) => void
 }
@@ -50,30 +61,38 @@ export function createApi<TOOLS extends ToolSet>(options: ApiOptions<TOOLS>) {
   /** Chats with a turn in progress, until the turn is saved or has failed. */
   const running = new Map<string, Promise<void>>()
 
+  /** The requesting user's chats: `X-User-Id`, or the default user without one. */
+  function userChats(c: Context) {
+    const header = c.req.header(USER_ID_HEADER)
+    return service.forUser(header === undefined ? options.defaultUserId : parse(idSchema, header, 'user id'))
+  }
+
   const app = new Hono()
 
-  app.get('/chats', async c => c.json(await service.listChats()))
+  app.get('/chats', async c => c.json(await userChats(c).listChats()))
 
   app.get('/chats/:id/messages', async c => {
-    const chatId = parse(chatIdSchema, c.req.param('id'), 'chat id')
+    const chatId = parse(idSchema, c.req.param('id'), 'chat id')
     const page = parse(paginationQuerySchema, c.req.query(), 'query')
-    return c.json(await service.loadMessagesPage(chatId, page))
+    return c.json(await userChats(c).loadMessagesPage(chatId, page))
   })
 
   app.post('/chats/:id/messages', async c => {
-    const chatId = parse(chatIdSchema, c.req.param('id'), 'chat id')
+    const chatId = parse(idSchema, c.req.param('id'), 'chat id')
+    const chats = userChats(c)
     const body = parse(messagesBodySchema, await c.req.json().catch(() => undefined), 'body')
     const text = body.message.parts.map(part => part.text).join('\n').trim()
     if (text === '') throw badRequest('body: message text is empty')
 
-    // Concurrent turns would both build on the same history.
+    // Concurrent turns would both build on the same history. Chat ids are unique
+    // across users, so the busy set doesn't need the user.
     if (running.has(chatId)) throw new HTTPException(409, { message: 'a reply for this chat is still in progress' })
 
     let release!: () => void
     running.set(chatId, new Promise(resolve => { release = resolve }))
     try {
-      const chat = await service.openChat(chatId).catch(error => {
-        if (error instanceof ChatNotFoundError) return service.newChat(chatId)
+      const chat = await chats.openChat(chatId).catch(error => {
+        if (error instanceof ChatNotFoundError) return chats.newChat(chatId)
         throw error
       })
       const turn = await chat.send(text)

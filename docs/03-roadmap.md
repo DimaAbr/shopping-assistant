@@ -153,9 +153,11 @@ Phase record: [06-phase-3-persistence-sessions.md](06-phase-3-persistence-sessio
 - Summary trigger: by token count, by message count, or both?
 - Should "user insights" (budget, recipient, tastes) be pulled out as structured state alongside the summary? This could be the seed for `user_memories`.
 
-## Phase 5 — HTTP API & minimal client `[~]`
+## Phase 5 — HTTP API & minimal client `[x]`
 
-Phase record: [07-phase-5-http-api.md](07-phase-5-http-api.md).
+Phase records: [07-phase-5-http-api.md](07-phase-5-http-api.md) (API), [08-phase-5b-web-client.md](08-phase-5b-web-client.md) (client).
+
+> **Client rescoped (2026-11-04):** a familiar chat UI from **assistant-ui primitives + plain CSS** over our own `useChat` core, instead of a minimal hand-rolled page. Product tiles (phase 6) and a placeholder identity seam (`X-User-Id`, ahead of phase 7) were pulled in.
 
 > **Split (2026-11-04):** the API comes first (no users, no MCP, no UI). The minimal client follows as the second half.
 
@@ -171,31 +173,42 @@ Phase record: [07-phase-5-http-api.md](07-phase-5-http-api.md).
 - Product data in responses is JSON with **image URLs**, not base64. The widget contract is a `ProductCard` inside the tool output (07, "Product card contract").
 - The user is still the default user, passed implicitly.
 
-**Scope: client** `[ ]`
-- Minimal **Vite + React** client using `useChat`: chat list, switching chats, streaming text. Tool parts are shown as raw JSON or plain lists for now.
+**Scope: client** `[x]`
+- ~~Minimal **Vite + React** client using `useChat`: chat list, switching chats, streaming text. Tool parts are shown as raw JSON or plain lists for now.~~ Rescoped (08):
+  - `web/` workspace package: Vite + React, assistant-ui primitives, CSS modules
+  - headless core: `ShoppingConfig`, identity, API client + transport, chat list, `useShoppingChat`
+  - product tiles for both shopping tools, live and from history
+  - identity seam: `X-User-Id` (host user or anonymous `localStorage` id); users created with their first chat
 
 **Done when**
 - [x] API tests (Hono's test client + mock model) pass: streaming, persistence, pagination, and a client that disconnects mid-stream still gets the full message saved.
 - [x] The eval set is unchanged by the tool-output change: 12/13 before and after (only the known `tops` case, 3/5).
-- [ ] Manual end-to-end check: open the client, chat, switch chats, reload, and history is intact. *(The API side was checked with curl against the live model.)*
-- [ ] Works on Windows. *(API half checked by the user, 2026-11-04: tests, `pnpm chat` and `pnpm api`. Still needs a check once the client exists.)*
+- [x] Client tests pass: core, tiles, and the whole page on a fake API (08, "Results").
+- [x] Manual end-to-end check: open the client, chat, switch chats, reload, and history is intact. *(2026-11-04, live model, headless Chromium; 08 "Results".)*
+- [x] Works on Windows (checked by the user, 2026-11-04: install, tests, `pnpm api` and `pnpm web`; chat works and searches return product tiles).
 
-## Phase 6 — Product UI `[ ]`
+## Phase 6 — Product UI & embed `[~]`
+
+> **Tiles done in phase 5b (2026-11-04):** see 08. What's left is the embed and tile polish.
 
 **Goal:** products display as proper tiles, live and from history.
 
 **Scope**
-- Render `tool-searchProducts` parts as a `<ProductTiles>` component (image, title, price, rating).
-- Loading and error states for tool parts.
-- Optional: an embeddable **web-component widget**. First check whether the AI SDK client can be used without React; if not, parse the UI message stream by hand.
+- ~~Render `tool-searchProducts` parts as a `<ProductTiles>` component (image, title, price, rating).~~ Done in 5b, for both tools. Rating isn't shown yet.
+- ~~Loading and error states for tool parts.~~ Done in 5b.
+- Optional: an embeddable **widget** (web component or iframe) over the 5b core. ~~First check whether the AI SDK client can be used without React.~~ It can: `ai`'s `Chat` class (02 §14.8). Open: shadow-root styling, CORS, bundle size (~945 KB), and how a host passes identity.
+- Tile polish: show only the products the reply is about (after 2b's filtering), collapse empty retries, load older history.
 
 **Done when**
-- [ ] Tiles render during streaming and after reloading history.
-- [ ] Component tests for the tile rendering pass.
+- [x] Tiles render during streaming and after reloading history.
+- [x] Component tests for the tile rendering pass.
+- [ ] The widget embeds on a plain HTML page, anonymous and with a host-provided user.
 
 ## Phase 7 — Auth & users *(optional)* `[ ]`
 
 **Goal:** real multiple users, each seeing only their own chats.
+
+> **Seam in place (2026-11-04, 08):** the API already scopes by an `X-User-Id` header (trusted, no auth), and the client config takes `identity`. This phase makes the identity verifiable.
 
 **Scope**
 - Simple auth. Options to evaluate in the phase plan: a hand-rolled session cookie, or a library such as better-auth (it works with Hono + Drizzle + SQLite).

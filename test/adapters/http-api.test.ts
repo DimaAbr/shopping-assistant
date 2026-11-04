@@ -4,7 +4,7 @@ import type { UIMessage } from 'ai'
 
 import { createChatService } from '../../src/agent/chat-service.ts'
 import { createShoppingTools, ShoppingToolResultSchema } from '../../src/agent/tools.ts'
-import { createApi, MAX_PAGE_LIMIT } from '../../src/adapters/http/app.ts'
+import { createApi, MAX_PAGE_LIMIT, USER_ID_HEADER } from '../../src/adapters/http/app.ts'
 import { ProductCardSchema } from '../../src/domain/product-card.ts'
 import { DEFAULT_USER_ID } from '../../src/store/chat-store.ts'
 import { memorySink } from '../../src/observability/step-log.ts'
@@ -20,7 +20,6 @@ async function newApi(replies: Reply[]) {
 
   const service = createChatService({
     store,
-    userId: DEFAULT_USER_ID,
     model: new MockLanguageModelV4({ doStream: replies }),
     summarizer: new MockLanguageModelV4({ doGenerate: generatedText('Lipstick shopping') }),
     tools: createShoppingTools(createFakeRepository(), categories),
@@ -29,7 +28,7 @@ async function newApi(replies: Reply[]) {
   })
 
   const turnErrors: unknown[] = []
-  const api = createApi({ service, onTurnError: error => { turnErrors.push(error) } })
+  const api = createApi({ service, defaultUserId: DEFAULT_USER_ID, onTurnError: error => { turnErrors.push(error) } })
 
   async function settled() {
     await api.settled()
@@ -39,13 +38,15 @@ async function newApi(replies: Reply[]) {
   return { app: api.app, store, settled, turnErrors }
 }
 
-function send(app: ReturnType<typeof createApi>['app'], chatId: string, body: unknown) {
+function send(app: ReturnType<typeof createApi>['app'], chatId: string, body: unknown, userId?: string) {
   return app.request(`/chats/${chatId}/messages`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...asUser(userId) },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   })
 }
+
+const asUser = (userId?: string): Record<string, string> => userId === undefined ? {} : { [USER_ID_HEADER]: userId }
 
 const userMessage = (text: string) => ({ message: { id: 'client-1', role: 'user', parts: [{ type: 'text', text }] } })
 
@@ -222,6 +223,47 @@ describe('GET /chats/:id/messages', () => {
     const { app } = await newApi([])
     expect((await app.request(`/chats/chat-1/messages?limit=${MAX_PAGE_LIMIT + 1}`)).status).toBe(400)
     expect((await app.request('/chats/chat-1/messages?limit=0')).status).toBe(400)
+  })
+})
+
+describe('identity (X-User-Id)', () => {
+  it('creates a new user with their first chat, and scopes their list to them', async () => {
+    const { app, store, settled } = await newApi([textReply(['Hi anon!']), textReply(['Hi default!'])])
+
+    await (await send(app, 'anon-chat', userMessage('hello'), 'anon-123')).text()
+    await settled()
+    await (await send(app, 'default-chat', userMessage('hello'))).text()
+    await settled()
+
+    const ids = async (userId?: string) =>
+      (await (await app.request('/chats', { headers: asUser(userId) })).json() as Array<{ id: string }>).map(chat => chat.id)
+
+    expect(await ids('anon-123')).toEqual(['anon-chat'])
+    expect(await ids()).toEqual(['default-chat'])   // no header: the default user
+    expect(await ids('someone-else')).toEqual([])
+    expect(await store.loadMessages('anon-123', 'anon-chat')).toHaveLength(2)
+  })
+
+  it("hides another user's chat: history is 404 and a POST to its id is not saved", async () => {
+    const { app, store, settled, turnErrors } = await newApi([textReply(['Hi!']), textReply(['Intruder reply'])])
+
+    await (await send(app, 'chat-a', userMessage('hello'), 'user-a')).text()
+    await settled()
+
+    expect((await app.request('/chats/chat-a/messages', { headers: asUser('user-b') })).status).toBe(404)
+
+    await (await send(app, 'chat-a', userMessage('let me in'), 'user-b')).text()
+    await settled()
+
+    expect(turnErrors).toHaveLength(1)
+    expect(await store.loadMessages('user-a', 'chat-a')).toHaveLength(2)
+  })
+
+  it('rejects a malformed user id with 400', async () => {
+    const { app } = await newApi([])
+    const response = await app.request('/chats', { headers: asUser('not a valid id!') })
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: expect.stringContaining('user id') })
   })
 })
 

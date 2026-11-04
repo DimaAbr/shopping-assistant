@@ -11,12 +11,13 @@ import { createApi } from './app.ts'
 /** How long shutdown waits for running turns and titles. */
 const SHUTDOWN_GRACE_MS = 10_000
 
-const { config, db, categories, service } = await bootstrap({
+const { config, db, categories, service, defaultUserId } = await bootstrap({
   onBackgroundError: (error, { chatId, task }) => console.error(`[${task}] chat ${chatId}:`, error),
 })
 
 const api = createApi({
   service,
+  defaultUserId,
   onTurnError: (error, { chatId }) => console.error(`[turn] chat ${chatId} (not saved):`, error),
 })
 
