@@ -6,7 +6,8 @@ Issues:
 
 Fun stuff for later:
     Web component embeddable widget ❔
-    MCP + MCP Apps/Markdown fallback ❔
+    MCP + MCP Apps/Markdown fallback
+        Add better UI ❔
 
 To Read up:
     Alternatives to evalite.

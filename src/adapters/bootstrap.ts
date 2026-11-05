@@ -31,13 +31,14 @@ export async function bootstrap(options: Pick<ChatServiceOptions<ShoppingTools>,
 
   const defaultUserId = await store.ensureDefaultUser()
   const logSink = jsonlFileSink(config.stepLogPath)
+  const searchModel = models.getModel('searcher')
   const service = createChatService({
     store,
     model: models.getModel('chat'),
     summarizer: models.getModel('summarizer'),
     memoryModel: models.getModel('memory'),
     instructions: memories => buildInstructions(categories, memories),
-    tools: createShoppingTools(repo, categories, { searchModel: models.getModel('searcher'), logSink }),
+    tools: createShoppingTools(repo, categories, { searchModel, logSink }),
     maxSteps: config.maxSteps,
     historyWindow: config.historyWindow,
     stepTimeoutMs: config.stepTimeoutMs,
@@ -45,7 +46,7 @@ export async function bootstrap(options: Pick<ChatServiceOptions<ShoppingTools>,
     onBackgroundError: options.onBackgroundError,
   })
 
-  return { config, db, categories, service, defaultUserId }
+  return { config, db, repo, categories, searchModel, logSink, service, defaultUserId }
 }
 
 async function orExit<T>(run: () => Promise<T>, describe: (error: unknown) => string): Promise<T> {

@@ -43,6 +43,19 @@ export type ShoppingToolsOptions = {
 
 const priceSchema = z.number().nonnegative()
 
+/** `findProducts` input, shared by the chat tool and the MCP tool (11). */
+export const FindProductsInputSchema = z.object({
+  request: z.string().trim()
+    .min(1).max(300)
+    .describe(
+      'A short, self-contained description of what to find, using the whole conversation, including any timing ("needed by Friday") ' +
+      '(e.g. "workout shoes and sports accessories for a man who is starting to exercise"). ' +
+      'Leave prices out: use minPrice / maxPrice.',
+    ),
+  minPrice: priceSchema.optional().describe('Lowest price in USD, if the shopper gave one.'),
+  maxPrice: priceSchema.optional().describe('Highest price in USD, if the shopper gave a budget.'),
+})
+
 export function createShoppingTools(repo: ProductRepository, categories: readonly string[], options: ShoppingToolsOptions) {
   if (categories[0] === undefined) throw new Error('createShoppingTools needs at least one category')
 
@@ -53,17 +66,7 @@ export function createShoppingTools(repo: ProductRepository, categories: readonl
         'the kinds of product, who they are for, what for, and when they are needed. The search plans the catalog queries, ' +
         'filters out what doesn\'t fit and returns the matches grouped by kind of product. ' +
         'The shopper sees the products as tiles.',
-      inputSchema: z.object({
-        request: z.string().trim()
-          .min(1).max(300)
-          .describe(
-            'A short, self-contained description of what to find, using the whole conversation, including any timing ("needed by Friday") ' +
-            '(e.g. "workout shoes and sports accessories for a man who is starting to exercise"). ' +
-            'Leave prices out: use minPrice / maxPrice.',
-          ),
-        minPrice: priceSchema.optional().describe('Lowest price in USD, if the shopper gave one.'),
-        maxPrice: priceSchema.optional().describe('Highest price in USD, if the shopper gave a budget.'),
-      }),
+      inputSchema: FindProductsInputSchema,
       execute: (input, { toolCallId, abortSignal }) => findProducts(input, {
         repo,
         model: options.searchModel,

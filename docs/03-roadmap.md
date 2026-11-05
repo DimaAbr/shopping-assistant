@@ -226,22 +226,24 @@ Phase records: [07-phase-5-http-api.md](07-phase-5-http-api.md) (API), [08-phase
 - [ ] Tests confirm that user A cannot list or read user B's chats.
 - [ ] Login/logout works from the client.
 
-## Phase 8 — MCP endpoint & interop rendering *(optional)* `[ ]`
+## Phase 8 — MCP endpoint & interop rendering *(optional)* `[~]`
+
+> **Planned (2026-11-05):** details in [11-phase-8-mcp.md](11-phase-8-mcp.md). Stateless `/mcp` on the API server, markdown fallback; MCP Apps deferred.
 
 **Goal:** other MCP-capable clients can use the product search, with reasonable rendering.
 
 **Scope**
 - ~~**Decide first:** expose the domain tools, an agent-as-tool, or both (open question from 02 §10).~~ Decided (2026-11-04, 09): expose **`findProducts`**, the search workflow, as the MCP tool.
-- `@modelcontextprotocol/sdk` Streamable HTTP endpoint, mounted in Hono.
-- Anonymous sessions, possibly with a persistent opaque id.
+- `@modelcontextprotocol/sdk` Streamable HTTP endpoint, mounted in Hono. `[x]`
+- ~~Anonymous sessions, possibly with a persistent opaque id.~~ Dropped (2026-11-05, 11): the tool is stateless, so the endpoint is too.
 - Rendering for other clients:
-  - a markdown fallback (list with image links)
-  - optionally **MCP Apps** for hosts that support them
+  - a markdown fallback (list with image links) `[x]`
+  - optionally **MCP Apps** for hosts that support them (deferred, 11)
 
 **Done when**
-- [ ] MCP Inspector can list and call the tools.
-- [ ] Works from at least one real MCP host, e.g. Claude Desktop.
-- [ ] Tests for the MCP wrappers pass. They reuse the domain tests' fixtures.
+- [x] MCP Inspector can list and call the tools.
+- [x] Works from at least one real MCP host, e.g. Claude Desktop.
+- [x] Tests for the MCP wrappers pass. They reuse the domain tests' fixtures.
 
 ---
 

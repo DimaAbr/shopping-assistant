@@ -279,6 +279,11 @@ This is the central concept of the memory work.
 - **Auth:** anonymous sessions, possibly with a persistent opaque id. Full MCP OAuth 2.1 is out of scope.
 - **SDK:** `@modelcontextprotocol/sdk`, Streamable HTTP transport, mounted in the Hono app.
 
+> **Note (2026-11-05): phase 8.** Details are in [11-phase-8-mcp.md](11-phase-8-mcp.md).
+> - **Stateless, no sessions.** `findProducts` has no user or chat state (10), so the "anonymous sessions" above aren't needed.
+> - **The calling guidance moves into the tool description**, since a host's model never sees our system prompt.
+> - **Markdown fallback** in `content`, the whole result in `structuredContent`. MCP Apps deferred.
+
 ## 11. Testing strategy
 
 Testing starts in phase 1, not at the end. There are three layers:
