@@ -38,6 +38,39 @@ export const oneSearch: Check = turns => {
     : `expected one findProducts call, got ${JSON.stringify(calls)}`
 }
 
+/** The last turn's findProducts requests don't match (e.g. facts about the wrong person). */
+export function requestDoesNotMatch(pattern: RegExp, label = String(pattern)): Check {
+  return turns => {
+    const bad = lastTurn(turns)
+      .toolCalls
+      .map(call => String(call.input.request ?? ''))
+      .find(request => pattern.test(request))
+      
+    return bad === undefined
+      ? undefined
+      : `request "${bad}" matches ${label}`
+  }
+}
+
+// ── memories (Conversation cases, 10) ───────────────────────────────────────
+
+/** Some memory about `subject` after the last turn matches. */
+export function remembers(subject: string, pattern: RegExp, label = String(pattern)): Check {
+  return turns => (lastTurn(turns).memories ?? []).some(memory => memory.subject === subject && pattern.test(memory.text))
+    ? undefined
+    : `no memory about ${subject} matches ${label}: ${JSON.stringify(lastTurn(turns).memories)}`
+}
+
+/** No memory about `subject` after the last turn matches. */
+export function doesNotRemember(subject: string, pattern: RegExp, label = String(pattern)): Check {
+  return turns => {
+    const bad = (lastTurn(turns).memories ?? []).find(memory => memory.subject === subject && pattern.test(memory.text))
+    return bad === undefined
+      ? undefined
+      : `memory about ${subject} matches ${label}: "${bad.text}"`
+  }
+}
+
 // ── search results (last turn) ──────────────────────────────────────────────
 
 /** The last turn returned at least one product, and all of them are from the plausible categories. */

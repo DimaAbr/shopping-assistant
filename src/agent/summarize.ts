@@ -7,8 +7,8 @@ import { generateText, type LanguageModel, type UIMessage } from 'ai'
  * messages is sent: tool calls and results (product payloads) are left out,
  * which keeps the call small and the summary about the conversation itself.
  *
- * Today the only purpose is a chat title. Context compaction (phase 4)
- * may add its own purpose here.
+ * The only purpose is a chat title. There is no context compaction: long chats
+ * use a recent window plus memories instead (10).
  */
 
 export type SummaryPurpose = 'title'

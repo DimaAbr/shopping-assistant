@@ -22,12 +22,17 @@ import { createStepLogger, type StepLogSink } from '../observability/step-log.ts
  *
  * Persistence is a port: `onTurnEnd` receives each successful turn's new
  * messages ([user, assistant]). The session itself knows nothing about storage.
+ *
+ * The model only sees the last `historyWindow` messages (10, "Recent window").
+ * Nothing is summarized: what matters from older messages lives on as
+ * extracted memories, which reach the model through `instructions`.
  */
 
 export type ChatSessionOptions<TOOLS extends ToolSet = ToolSet> = {
   model: LanguageModel
   chatId: string
-  instructions?: string
+  /** A string, or a function called at the start of every turn (e.g. to include the user's memories). */
+  instructions?: string | (() => Promise<string>)
   tools?: TOOLS
   maxSteps: number
   /**
@@ -38,6 +43,10 @@ export type ChatSessionOptions<TOOLS extends ToolSet = ToolSet> = {
   logSink: StepLogSink
   /** Prior history, e.g. loaded from the store when a chat is resumed. */
   initialMessages?: readonly UIMessage[]
+  /** How many turns came before. Default: the user messages in `initialMessages` (less, if only its tail was loaded). */
+  initialTurns?: number
+  /** The most recent messages the model sees per turn. Default: the whole history. */
+  historyWindow?: number
   /**
    * Called once per successful turn with the messages it added, before `done` resolves.
    * If it throws, the turn fails and history is rolled back.
@@ -65,9 +74,13 @@ export type ChatTurn<TOOLS extends ToolSet = ToolSet> = {
 export function createChatSession<TOOLS extends ToolSet = ToolSet>(options: ChatSessionOptions<TOOLS>) {
   const history: UIMessage[] = [...options.initialMessages ?? []]
   // Turn numbers in the step log continue across restarts.
-  let turn = history.filter(message => message.role === 'user').length
+  let turn = options.initialTurns ?? history.filter(message => message.role === 'user').length
 
   async function send(text: string): Promise<ChatTurn<TOOLS>> {
+    const instructions = typeof options.instructions === 'function'
+      ? await options.instructions()
+      : options.instructions
+
     turn += 1
     const historyLengthBefore = history.length
     history.push({
@@ -82,8 +95,8 @@ export function createChatSession<TOOLS extends ToolSet = ToolSet>(options: Chat
 
     const result = streamText({
       model: options.model,
-      instructions: options.instructions,
-      messages: await convertToModelMessages(originalMessages, { tools: options.tools }),
+      instructions,
+      messages: await convertToModelMessages(recentWindow(originalMessages, options.historyWindow), { tools: options.tools }),
       tools: options.tools,
       stopWhen: isStepCount(options.maxSteps),
       timeout: { stepMs: options.stepTimeoutMs },
@@ -140,6 +153,17 @@ export function createChatSession<TOOLS extends ToolSet = ToolSet>(options: Chat
 }
 
 export type ChatSession<TOOLS extends ToolSet = ToolSet> = ReturnType<typeof createChatSession<TOOLS>>
+
+/**
+ * The last `size` messages, starting at a user message so the model never sees
+ * a reply without its question. The newest message is always a user message, so
+ * the window is never empty.
+ */
+export function recentWindow(messages: readonly UIMessage[], size = Infinity): UIMessage[] {
+  const window = messages.slice(-Math.max(1, size))
+  const start = window.findIndex(message => message.role === 'user')
+  return start === -1 ? window : window.slice(start)
+}
 
 export const TIMEOUT_ERROR_TEXT = 'The reply took too long. Please try again.'
 

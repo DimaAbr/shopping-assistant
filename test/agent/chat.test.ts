@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import type { UIMessage } from 'ai'
 
-import { createChatSession, TIMEOUT_ERROR_TEXT } from '../../src/agent/chat.ts'
+import { createChatSession, recentWindow, TIMEOUT_ERROR_TEXT } from '../../src/agent/chat.ts'
 import { memorySink } from '../../src/observability/step-log.ts'
 import { createFakeRepository, testShoppingTools, unavailable } from '../helpers/fake-repository.ts'
 import { collect, gatedTextReply, textReply, toolCallReply } from '../helpers/mock-model.ts'
@@ -313,5 +313,64 @@ describe('chat session persistence hooks', () => {
     expect(chunks).toContain('start')
     expect(chunks).toContain('text-delta')
     expect(chunks.at(-1)).toBe('finish')
+  })
+})
+
+describe('chat session: recent window', () => {
+  const message = (role: 'user' | 'assistant', n: number): UIMessage => ({ id: `${role}-${n}`, role, parts: [{ type: 'text', text: `${role} ${n}` }] })
+  const pairs = (count: number) => Array.from({ length: count }, (_, i) => [message('user', i), message('assistant', i)]).flat()
+
+  it('keeps the last messages, starting at a user message', () => {
+    const history = [...pairs(3), message('user', 3)]
+    expect(recentWindow(history, 3).map(m => m.id)).toEqual(['user-2', 'assistant-2', 'user-3'])
+    expect(recentWindow(history, 4).map(m => m.id)).toEqual(['user-2', 'assistant-2', 'user-3'])
+    expect(recentWindow(history, 0).map(m => m.id)).toEqual(['user-3'])
+    expect(recentWindow(history)).toEqual(history)
+  })
+
+  it('sends the model only the window; history and saved messages are complete', async () => {
+    const model = new MockLanguageModelV4({ doStream: [textReply(['ok'])] })
+    const saved: UIMessage[][] = []
+    const session = createChatSession({
+      model,
+      chatId: 'chat-1',
+      maxSteps: 3,
+      stepTimeoutMs: 10_000,
+      logSink: memorySink(),
+      initialMessages: pairs(5),
+      historyWindow: 4,
+      onTurnEnd: async messages => { saved.push(messages) },
+    })
+
+    await (await session.send('next')).done
+    const prompt = model.doStreamCalls[0]!.prompt
+    expect(prompt.map(m => m.role)).toEqual(['user', 'assistant', 'user'])
+    expect(JSON.stringify(prompt[0])).toContain('user 4')
+    expect(session.history).toHaveLength(12)
+    expect(saved[0]!.map(m => m.role)).toEqual(['user', 'assistant'])
+  })
+
+  it('builds the instructions at the start of every turn; turn numbers can continue from a count', async () => {
+    const model = new MockLanguageModelV4({ doStream: [textReply(['one']), textReply(['two'])] })
+    const sink = memorySink()
+    let built = 0
+    const session = createChatSession({
+      model,
+      chatId: 'chat-1',
+      instructions: async () => `version ${++built}`,
+      maxSteps: 3,
+      stepTimeoutMs: 10_000,
+      logSink: sink,
+      initialMessages: pairs(1),
+      initialTurns: 7,
+    })
+
+    await (await session.send('a')).done
+    await (await session.send('b')).done
+    expect(model.doStreamCalls.map(call => call.prompt[0])).toEqual([
+      { role: 'system', content: 'version 1' },
+      { role: 'system', content: 'version 2' },
+    ])
+    expect(sink.records.map(record => record.turn)).toEqual([8, 9])
   })
 })

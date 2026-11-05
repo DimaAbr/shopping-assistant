@@ -1,7 +1,8 @@
-import { generateId, type LanguageModel, type ToolSet } from 'ai'
-import type { StepLogSink } from '../observability/step-log.ts'
-import type { ChatStore } from '../store/chat-store.ts'
+import { generateId, type LanguageModel, type ToolSet, type UIMessage } from 'ai'
+import { createStepLogger, type StepLogSink } from '../observability/step-log.ts'
+import type { ChatStore, Memory } from '../store/chat-store.ts'
 import { createChatSession, type ChatSession } from './chat.ts'
+import { extractMemories } from './memory.ts'
 import { summarizeChat } from './summarize.ts'
 
 /**
@@ -14,25 +15,38 @@ import { summarizeChat } from './summarize.ts'
  * - After that first turn, a title is generated in the background with the
  *   `summarizer` model. If it fails the chat stays untitled and lists fall back
  *   to its first message; the turn itself is never affected.
+ * - With a `memoryModel`, every turn is followed by memory extraction in the
+ *   background (10, "Memories"), one at a time per chat. Each turn's
+ *   instructions are built from the user's memories at that moment. A failed
+ *   extraction loses that turn's facts; the turn is never affected.
+ * - With a `historyWindow`, the model sees only the most recent messages, and a
+ *   resumed chat loads only that many.
  */
 
 export type ChatServiceOptions<TOOLS extends ToolSet = ToolSet> = {
   store: ChatStore
   model: LanguageModel
   summarizer: LanguageModel
-  instructions?: string
+  /** The model for memory extraction. Without one, nothing is remembered. */
+  memoryModel?: LanguageModel
+  /** A fixed string, or built per turn from the user's memories (lasting ones and this chat's). */
+  instructions?: string | ((memories: readonly Memory[]) => string)
   tools?: TOOLS
+  /** See `ChatSessionOptions.historyWindow`. Default: the whole history. */
+  historyWindow?: number
   maxSteps: number
   /** See `ChatSessionOptions.stepTimeoutMs`. */
   stepTimeoutMs: number
   logSink: StepLogSink
-  /** Background failures (title generation). Default: ignored. */
-  onBackgroundError?: (error: unknown, context: { chatId: string, task: 'title' }) => void
+  /** Background failures (title generation, memory extraction). Default: ignored. */
+  onBackgroundError?: (error: unknown, context: { chatId: string, task: 'title' | 'memory' }) => void
 }
 
 export function createChatService<TOOLS extends ToolSet = ToolSet>(options: ChatServiceOptions<TOOLS>) {
   const { store } = options
   const background = new Set<Promise<void>>()
+  /** The last memory extraction queued per chat, so they run one at a time. */
+  const memoryQueues = new Map<string, Promise<void>>()
 
   function track(task: Promise<void>) {
     background.add(task)
@@ -45,18 +59,57 @@ export function createChatService<TOOLS extends ToolSet = ToolSet>(options: Chat
       await Promise.allSettled([...background])
   }
 
-  function session(userId: string, chatId: string, initialMessages: Awaited<ReturnType<ChatStore['loadMessages']>>): ChatSession<TOOLS> {
+  /**
+   * Queues a memory extraction for the turn. Extractions of one chat run in order,
+   * so each sees the previous one's changes. Two chats of the same user can still
+   * both change lasting memories at once; the later write wins.
+   */
+  function rememberTurn(userId: string, chatId: string, newMessages: UIMessage[]) {
+    const memoryModel = options.memoryModel
+    if (memoryModel === undefined) return
+
+    const task = (memoryQueues.get(chatId) ?? Promise.resolve())
+      .then(async () => {
+        const ops = await extractMemories({
+          model: memoryModel,
+          current: await store.loadMemories(userId, chatId),
+          newMessages,
+          log: createStepLogger({ chatId, turn: 0, scope: 'memory', sink: options.logSink }),
+        })
+        await store.applyMemoryOps(userId, chatId, ops, { sourceMessageId: newMessages.find(message => message.role === 'user')?.id })
+      })
+      .catch(error => options.onBackgroundError?.(error, { chatId, task: 'memory' }))
+
+    memoryQueues.set(chatId, task)
+
+    void task.finally(() => {
+      if (memoryQueues.get(chatId) === task)
+        memoryQueues.delete(chatId)
+    })
+    
+    track(task)
+  }
+
+  function instructionsFor(userId: string, chatId: string): string | (() => Promise<string>) | undefined {
+    const build = options.instructions
+    if (typeof build !== 'function') return build
+    return async () => build(options.memoryModel === undefined ? [] : await store.loadMemories(userId, chatId))
+  }
+
+  function session(userId: string, chatId: string, initialMessages: UIMessage[], initialTurns?: number): ChatSession<TOOLS> {
     let stored = initialMessages.length > 0
 
     return createChatSession({
       model: options.model,
       chatId,
-      instructions: options.instructions,
+      instructions: instructionsFor(userId, chatId),
       tools: options.tools,
       maxSteps: options.maxSteps,
       stepTimeoutMs: options.stepTimeoutMs,
       logSink: options.logSink,
       initialMessages,
+      initialTurns,
+      historyWindow: options.historyWindow,
       onTurnEnd: async newMessages => {
         const isFirst = !stored
         await store.appendMessages(userId, chatId, newMessages, { createIfMissing: isFirst })
@@ -67,6 +120,7 @@ export function createChatService<TOOLS extends ToolSet = ToolSet>(options: Chat
             .then(title => store.setTitle(userId, chatId, title))
             .catch(error => options.onBackgroundError?.(error, { chatId, task: 'title' })),
         )
+        rememberTurn(userId, chatId, newMessages)
       },
     })
   }
@@ -85,9 +139,19 @@ export function createChatService<TOOLS extends ToolSet = ToolSet>(options: Chat
           return session(userId, chatId, [])
         },
 
-        /** Resumes a stored chat. Throws `ChatNotFoundError` if this user has no such chat. */
+        /**
+         * Resumes a stored chat: its last `historyWindow` messages, or all of them.
+         * Throws `ChatNotFoundError` if this user has no such chat.
+         */
         async openChat(chatId: string): Promise<ChatSession<TOOLS>> {
-          return session(userId, chatId, await store.loadMessages(userId, chatId))
+          if (options.historyWindow === undefined)
+            return session(userId, chatId, await store.loadMessages(userId, chatId))
+
+          const [page, turns] = await Promise.all([
+            store.loadMessagesPage(userId, chatId, { limit: options.historyWindow }),
+            store.countTurns(userId, chatId),
+          ])
+          return session(userId, chatId, page.messages, turns)
         },
 
         listChats: () => store.listChats(userId),

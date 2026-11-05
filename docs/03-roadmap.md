@@ -133,28 +133,32 @@ Phase record: [06-phase-3-persistence-sessions.md](06-phase-3-persistence-sessio
 **Open questions**
 - ~~Should the CLI keep the "first message picks a session" UX, or switch to explicit commands (`/new`, `/list`, `/open`)?~~ **Explicit commands** (2026-11-04). Startup opens a new chat; `/sessions` lists and switches.
 
-## Phase 4 — Context management `[ ]`
+## Phase 4 — Context management `[~]`
 
 > **Deferred (2026-11-04):** like 2b, this isn't part of the MVP. It comes after the HTTP API (phase 5). The phase numbers stay as they are.
+
+> **Rescoped (2026-11-05):** phase record: [10-phase-4-context-memory.md](10-phase-4-context-memory.md). Long-running chats (the embedded widget) made this urgent. **No summary**: the chat model sees a recent window of messages. Facts about the user are **extracted after each turn** into `memories` (lasting or per-chat, each tagged with who it's about), and the chat agent gets them in its instructions. `chat_summaries` is dropped.
 
 **Goal:** long conversations stay within budget and keep their quality. Stored history is never mutated.
 
 **Scope**
-- Context view builder in `prepareStep`. Layers are applied in order (see 02 §7):
+- ~~Context view builder in `prepareStep`. Layers are applied in order (see 02 §7):~~ Rescoped (2026-11-05):
   1. slim tool outputs (already done in phase 2)
-  2. prune old tool results (`pruneMessages`)
-  3. incremental summary + recent window, using the `summarizer` role and stored in `chat_summaries` (this phase's migration adds the table). `agent/summarize.ts` from phase 3 can gain a compaction purpose
-- Token budget and thresholds are configurable.
-- Fixtures of long conversations, recorded from real phase 2–3 chats in the DB.
+  2. ~~prune old tool results (`pruneMessages`)~~ Not needed: old tool results age out with the window
+  3. ~~incremental summary + recent window~~ **recent window only** (`HISTORY_WINDOW`), plus **memories** extracted after each turn by the `memory` role
+- ~~Token budget and thresholds are configurable.~~ The window size is configurable.
+- Fixtures of long conversations, recorded from real phase 2–3 chats in the DB. *(Replaced by multi-chat memory eval cases, 10.)*
 
 **Done when**
-- [ ] Unit tests for the view builder pass: the right messages are pruned, the summary is inserted, the window size is correct, and stored history is unchanged.
-- [ ] Evals on long-conversation fixtures pass: earlier preferences (budget, recipient) are still respected after compaction.
-- [ ] The step log shows bounded input tokens on long chats.
+- [x] Unit tests pass for the window (size, starts at a user message, stored history unchanged, resumed chats load only the tail), memory store, extraction and wiring.
+- [x] Memory evals pass: an earlier budget is still respected outside the window, a recipient's facts don't mix with the user's, and lasting facts carry over between chats. *(2026-11-05: all four 5/5. The rest of the set passed too, except the known unstable school case, which a separate comparison showed isn't a regression (10 "Results").)*
+- [x] The step log shows bounded input tokens on long chats. *(2026-11-05, a 24-turn scripted chat: with the window, input levels off at about 4.5–5.5k tokens per call from turn ~11. Without it, input reaches 7.8k and keeps growing (10, "Long chat").)*
+- [x] Works on Windows (checked by the user, 2026-11-05: searches work and memories are stored and used).
 
 **Open questions**
-- Summary trigger: by token count, by message count, or both?
-- Should "user insights" (budget, recipient, tastes) be pulled out as structured state alongside the summary? This could be the seed for `user_memories`.
+- ~~Summary trigger: by token count, by message count, or both?~~ No summary (2026-11-05). The window is by message count.
+- ~~Should "user insights" (budget, recipient, tastes) be pulled out as structured state alongside the summary?~~ Yes, and instead of the summary: `memories` (10).
+- Should users be able to see and delete their memories? (`GET/DELETE /memories`, needs phase 7 for anything beyond a POC.)
 
 ## Phase 5 — HTTP API & minimal client `[x]`
 
@@ -243,6 +247,6 @@ Phase records: [07-phase-5-http-api.md](07-phase-5-http-api.md) (API), [08-phase
 
 ## Backlog / ideas (unscheduled)
 
-- `user_memories`: cross-chat preferences, optionally with embeddings via libsql vector search.
+- ~~`user_memories`: cross-chat preferences, optionally with embeddings via libsql vector search.~~ Done in phase 4 as `memories`, without embeddings (10).
 - Local semantic product search over the cached catalog.
 - Cart actions via dummyjson `/carts` and UCP/ACP.

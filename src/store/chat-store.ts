@@ -1,10 +1,10 @@
-import { and, asc, desc, eq, lt, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import type { UIMessage } from 'ai'
 import type { Database } from './db.ts'
-import { chats, messages, users } from './schema.ts'
-import type { ChatSummary, MessagePage } from './types.ts'
+import { chats, memories, messages, users } from './schema.ts'
+import type { ChatSummary, Memory, MemoryOp, MessagePage } from './types.ts'
 
-export type { ChatSummary, MessagePage }
+export type { ChatSummary, Memory, MemoryOp, MessagePage }
 
 /**
  * Chat persistence (02 §6). Persistence only — no model calls, no prompts.
@@ -187,6 +187,77 @@ export function createChatStore(db: Database, options: { now?: () => Date } = {}
       })
     },
 
+    /** How many user messages (turns) the chat has. Throws `ChatNotFoundError` like `loadMessages`. */
+    async countTurns(userId: string, chatId: string): Promise<number> {
+      if (!await ownedChat(userId, chatId)) throw new ChatNotFoundError(chatId)
+
+      const [row] = await db
+        .select({ turns: count() })
+        .from(messages)
+        .where(and(eq(messages.chatId, chatId), eq(messages.role, 'user')))
+
+      return row?.turns ?? 0
+    },
+
+    /**
+     * The user's lasting memories, then those of this chat, oldest first.
+     * A chat that isn't stored yet (or isn't the user's) just has none.
+     */
+    async loadMemories(userId: string, chatId: string): Promise<Memory[]> {
+      const rows = await db
+        .select()
+        .from(memories)
+        .where(and(eq(memories.userId, userId), or(isNull(memories.chatId), eq(memories.chatId, chatId))))
+        .orderBy(asc(memories.createdAt), asc(memories.id))
+
+      return rows
+        .map(toMemory)
+        .sort((a, b) => Number(a.scope === 'chat') - Number(b.scope === 'chat'))
+    },
+
+    /**
+     * Applies the ops in one transaction. `add` with scope `chat` attaches to
+     * `chatId`. `update` and `remove` only reach the user's lasting memories and
+     * this chat's: ids from elsewhere are ignored.
+     * Throws `ChatNotFoundError` if the user doesn't own the chat.
+     */
+    async applyMemoryOps(userId: string, chatId: string, ops: readonly MemoryOp[], options: { sourceMessageId?: string } = {}) {
+      if (ops.length === 0) return
+      if (!await ownedChat(userId, chatId)) throw new ChatNotFoundError(chatId)
+
+      const reachable = and(eq(memories.userId, userId), or(isNull(memories.chatId), eq(memories.chatId, chatId)))
+
+      await db.transaction(async tx => {
+        const at = now()
+
+        for (const op of ops) {
+          if (op.op === 'add') {
+            await tx
+              .insert(memories)
+              .values({
+                id: crypto.randomUUID(),
+                userId,
+                chatId: op.scope === 'chat' ? chatId : null,
+                subject: op.subject,
+                text: op.text,
+                sourceMessageId: options.sourceMessageId ?? null,
+                createdAt: at,
+                updatedAt: at,
+              })
+          } else if (op.op === 'update') {
+            await tx
+              .update(memories)
+              .set({ text: op.text, sourceMessageId: options.sourceMessageId ?? null, updatedAt: at })
+              .where(and(eq(memories.id, op.id), reachable))
+          }
+        }
+
+        const removed = ops.flatMap(op => op.op === 'remove' ? [op.id] : [])
+        if (removed.length > 0)
+          await tx.delete(memories).where(and(inArray(memories.id, removed), reachable))
+      })
+    },
+
     async setTitle(userId: string, chatId: string, title: string) {
       await db
         .update(chats)
@@ -204,6 +275,15 @@ function toUIMessage(row: typeof messages.$inferSelect): UIMessage {
     role: row.role,
     parts: row.parts,
     ...(row.metadata == null ? {} : { metadata: row.metadata }),
+  }
+}
+
+function toMemory(row: typeof memories.$inferSelect): Memory {
+  return {
+    id: row.id,
+    scope: row.chatId === null ? 'user' : 'chat',
+    subject: row.subject,
+    text: row.text,
   }
 }
 

@@ -7,6 +7,7 @@ import { memorySink } from '../../src/observability/step-log.ts'
 import { testShoppingTools } from '../helpers/fake-repository.ts'
 import { generatedText, textReply, toolCallReply } from '../helpers/mock-model.ts'
 import { memoryStore } from '../helpers/store.ts'
+import { memories } from '../../src/store/schema.ts'
 
 async function newService(chat: MockLanguageModelV4, summarizer = new MockLanguageModelV4({ doGenerate: generatedText('Lipstick shopping') })) {
   const store = await memoryStore()
@@ -111,5 +112,122 @@ describe('chat service', () => {
   it('openChat rejects unknown chats', async () => {
     const { service } = await newService(new MockLanguageModelV4())
     await expect(service.openChat('nope')).rejects.toBeInstanceOf(ChatNotFoundError)
+  })
+})
+
+describe('chat service: memory and recent window', () => {
+  type Changes = { add?: Array<{ scope: 'lasting' | 'task', about: string, text: string }>, update?: Array<{ id: string, text: string }>, remove?: string[] }
+
+  /** A memory model that answers each call with the next scripted change. */
+  function memoryModel(script: Array<Changes | Error>, options: { gate?: Promise<void> } = {}) {
+    let call = 0
+    return new MockLanguageModelV4({
+      doGenerate: async () => {
+        const next = script[call++] ?? {}
+        if (call === 1) await options.gate
+        if (next instanceof Error) throw next
+        return generatedText(JSON.stringify({ add: next.add ?? [], update: next.update ?? [], remove: next.remove ?? [] }))
+      },
+    })
+  }
+
+  async function newMemoryService(chat: MockLanguageModelV4, memory: MockLanguageModelV4, historyWindow?: number) {
+    const store = await memoryStore()
+    await store.ensureDefaultUser()
+
+    const errors: Array<{ error: unknown, task: string }> = []
+    const service = createChatService({
+      store,
+      model: chat,
+      summarizer: new MockLanguageModelV4({ doGenerate: generatedText('A title') }),
+      memoryModel: memory,
+      instructions: memories => `be nice\n${memories.map(memory => `${memory.subject}: ${memory.text}`).join('\n')}`,
+      tools: testShoppingTools(),
+      historyWindow,
+      maxSteps: 3,
+      stepTimeoutMs: 10_000,
+      logSink: memorySink(),
+      onBackgroundError: (error, { task }) => { errors.push({ error, task }) },
+    }).forUser(DEFAULT_USER_ID)
+
+    return { service, store, errors }
+  }
+
+  const systemOf = (model: MockLanguageModelV4, call: number) => model.doStreamCalls[call]!.prompt.find(m => m.role === 'system')!.content
+
+  it('remembers facts after a turn and uses them in later turns and other chats', async () => {
+    const chat = new MockLanguageModelV4({ doStream: [textReply(['Noted.']), textReply(['Sure.']), textReply(['Here.'])] })
+    const memory = memoryModel([
+      { add: [{ scope: 'lasting', about: 'self', text: 'Is a man' }, { scope: 'task', about: 'wife', text: 'Gift for her birthday' }] },
+    ])
+    const { service, store } = await newMemoryService(chat, memory)
+
+    const first = service.newChat()
+    await (await first.send("I'm a guy looking for a gift for my wife's birthday")).done
+    await service.settled()
+    await (await first.send('something gold?')).done
+
+    expect(systemOf(chat, 0)).toBe('be nice\n')
+    expect(systemOf(chat, 1)).toBe('be nice\nself: Is a man\nwife: Gift for her birthday')
+
+    const second = service.newChat()
+    await (await second.send('hi')).done
+    expect(systemOf(chat, 2)).toBe('be nice\nself: Is a man')
+
+    await service.settled()
+    expect(memory.doGenerateCalls).toHaveLength(3)
+    const [stored] = await store.db.select().from(memories)
+    expect(stored!.sourceMessageId).toBe(first.history[0]!.id)
+  })
+
+  it('runs the extractions of one chat in order, each seeing the previous changes', async () => {
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const chat = new MockLanguageModelV4({ doStream: [textReply(['a']), textReply(['b'])] })
+    const memory = memoryModel([
+      { add: [{ scope: 'task', about: 'self', text: 'Budget $100' }] },
+      { update: [{ id: 'm1', text: 'Budget $150' }] },
+    ], { gate })
+    const { service, store } = await newMemoryService(chat, memory)
+
+    const session = service.newChat()
+    await (await session.send('budget is 100')).done
+    await (await session.send('make it 150')).done
+    expect(memory.doGenerateCalls).toHaveLength(1)
+
+    release()
+    await service.settled()
+    expect(JSON.stringify(memory.doGenerateCalls[1]!.prompt)).toContain('m1 (task, about: self) Budget $100')
+    expect((await store.loadMemories(DEFAULT_USER_ID, session.chatId)).map(m => m.text)).toEqual(['Budget $150'])
+  })
+
+  it('a failed extraction is reported and leaves the turn intact', async () => {
+    const chat = new MockLanguageModelV4({ doStream: [textReply(['Hi!'])] })
+    const { service, errors } = await newMemoryService(chat, memoryModel([new Error('memory down')]))
+
+    const session = service.newChat()
+    await (await session.send('hello')).done
+    await service.settled()
+
+    expect(errors.map(e => e.task)).toEqual(['memory'])
+    expect(session.history).toHaveLength(2)
+    expect(await service.listChats()).toHaveLength(1)
+  })
+
+  it('resumes a chat with only its recent messages', async () => {
+    const replies = Array.from({ length: 4 }, (_, i) => textReply([`reply ${i}`]))
+    const chat = new MockLanguageModelV4({ doStream: replies })
+    const { service } = await newMemoryService(chat, memoryModel([]), 4)
+
+    const original = service.newChat()
+    for (const text of ['one', 'two', 'three']) await (await original.send(text)).done
+    await service.settled()
+
+    const resumed = await service.openChat(original.chatId)
+    expect(resumed.history.map(m => m.role)).toEqual(['user', 'assistant', 'user', 'assistant'])
+    expect(JSON.stringify(resumed.history[0])).toContain('two')
+
+    await (await resumed.send('four')).done
+    expect(chat.doStreamCalls[3]!.prompt.filter(m => m.role !== 'system').map(m => m.role)).toEqual(['user', 'assistant', 'user'])
   })
 })

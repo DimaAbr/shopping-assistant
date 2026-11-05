@@ -10,7 +10,7 @@ import type { Config } from '../config/env.ts'
  * Everything else asks for a role and gets a provider-agnostic `LanguageModel`.
  */
 
-export type ModelRole = 'chat' | 'summarizer' | 'judge' | 'searcher'
+export type ModelRole = 'chat' | 'summarizer' | 'judge' | 'searcher' | 'memory'
 
 export type ModelRegistry = {
   getModel(role: ModelRole): LanguageModel
@@ -25,6 +25,7 @@ export function createModelRegistry(config: Pick<Config, 'openaiApiKey' | 'model
       summarizer: openai(config.models.summarizer),
       judge: openai(config.models.judge),
       searcher: openai(config.models.searcher),
+      memory: openai(config.models.memory),
     },
   })
 

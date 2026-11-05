@@ -183,3 +183,75 @@ describe('chat store: loadMessagesPage', () => {
     await expect(store.loadMessagesPage(DEFAULT_USER_ID, 'c1', { before: 'x1', limit: 10 })).rejects.toBeInstanceOf(ChatNotFoundError)
   })
 })
+
+describe('chat store: countTurns', () => {
+  it('counts user messages, scoped by user', async () => {
+    const store = await storeWithUsers()
+    await store.appendMessages(DEFAULT_USER_ID, 'c1', [user('u1', 'hi'), assistant('a1', 'hello')], { createIfMissing: true })
+    await store.appendMessages(DEFAULT_USER_ID, 'c1', [user('u2', 'lipstick?'), assistant('a2', 'sure')])
+
+    expect(await store.countTurns(DEFAULT_USER_ID, 'c1')).toBe(2)
+    await expect(store.countTurns('other', 'c1')).rejects.toBeInstanceOf(ChatNotFoundError)
+  })
+})
+
+describe('chat store: memories', () => {
+  async function storeWithChats() {
+    const store = await storeWithUsers()
+    await store.appendMessages(DEFAULT_USER_ID, 'c1', [user('u1', 'hi'), assistant('a1', 'hello')], { createIfMissing: true })
+    await store.appendMessages(DEFAULT_USER_ID, 'c2', [user('u2', 'hi'), assistant('a2', 'hello')], { createIfMissing: true })
+    await store.appendMessages('other', 'o1', [user('u3', 'hi'), assistant('a3', 'hello')], { createIfMissing: true })
+    return store
+  }
+
+  const texts = (memories: Array<{ text: string }>) => memories.map(memory => memory.text)
+
+  it('adds lasting memories to every chat of the user, and task memories to one chat', async () => {
+    const store = await storeWithChats()
+    await store.applyMemoryOps(DEFAULT_USER_ID, 'c1', [
+      { op: 'add', scope: 'chat', subject: 'wife', text: 'Birthday gift, budget $100' },
+      { op: 'add', scope: 'user', subject: 'self', text: 'Is a man' },
+    ], { sourceMessageId: 'u1' })
+
+    expect(await store.loadMemories(DEFAULT_USER_ID, 'c1')).toMatchObject([
+      { scope: 'user', subject: 'self', text: 'Is a man' },
+      { scope: 'chat', subject: 'wife', text: 'Birthday gift, budget $100' },
+    ])
+    expect(texts(await store.loadMemories(DEFAULT_USER_ID, 'c2'))).toEqual(['Is a man'])
+    expect(texts(await store.loadMemories(DEFAULT_USER_ID, 'not-stored-yet'))).toEqual(['Is a man'])
+    expect(await store.loadMemories('other', 'o1')).toEqual([])
+  })
+
+  it('updates and removes memories', async () => {
+    const store = await storeWithChats()
+    await store.applyMemoryOps(DEFAULT_USER_ID, 'c1', [
+      { op: 'add', scope: 'user', subject: 'self', text: 'Shoe size 42' },
+      { op: 'add', scope: 'chat', subject: 'self', text: 'Wants running shoes' },
+    ])
+    const [size, task] = await store.loadMemories(DEFAULT_USER_ID, 'c1')
+
+    await store.applyMemoryOps(DEFAULT_USER_ID, 'c1', [
+      { op: 'update', id: size!.id, text: 'Shoe size 43' },
+      { op: 'remove', id: task!.id },
+    ])
+    expect(await store.loadMemories(DEFAULT_USER_ID, 'c1')).toEqual([{ id: size!.id, scope: 'user', subject: 'self', text: 'Shoe size 43' }])
+  })
+
+  it("never changes another user's memories or another chat's task memories", async () => {
+    const store = await storeWithChats()
+    await store.applyMemoryOps('other', 'o1', [{ op: 'add', scope: 'user', subject: 'self', text: 'Theirs' }])
+    await store.applyMemoryOps(DEFAULT_USER_ID, 'c2', [{ op: 'add', scope: 'chat', subject: 'self', text: 'Chat 2 task' }])
+    const [theirs] = await store.loadMemories('other', 'o1')
+    const [chat2] = await store.loadMemories(DEFAULT_USER_ID, 'c2')
+
+    await store.applyMemoryOps(DEFAULT_USER_ID, 'c1', [
+      { op: 'update', id: theirs!.id, text: 'changed' },
+      { op: 'remove', id: chat2!.id },
+    ])
+    expect(texts(await store.loadMemories('other', 'o1'))).toEqual(['Theirs'])
+    expect(texts(await store.loadMemories(DEFAULT_USER_ID, 'c2'))).toEqual(['Chat 2 task'])
+
+    await expect(store.applyMemoryOps(DEFAULT_USER_ID, 'o1', [{ op: 'add', scope: 'user', subject: 'self', text: 'x' }]))
+      .rejects.toBeInstanceOf(ChatNotFoundError)
+  })
+})

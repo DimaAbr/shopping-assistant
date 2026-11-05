@@ -18,8 +18,10 @@ const EnvSchema = z.object({
   MODEL_SUMMARIZER: z.string().min(1).default(DEFAULT_MODEL),
   MODEL_JUDGE: z.string().min(1).default(DEFAULT_MODEL),
   MODEL_SEARCHER: z.string().min(1).default(DEFAULT_MODEL),
+  MODEL_MEMORY: z.string().min(1).default(DEFAULT_MODEL),
 
   MAX_STEPS: z.coerce.number().int().positive().default(5),
+  HISTORY_WINDOW: z.coerce.number().int().positive().default(20),
   STEP_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
   STEP_LOG_PATH: z.string().min(1).default('logs/steps.jsonl'),
 
@@ -32,8 +34,10 @@ const EnvSchema = z.object({
 
 export type Config = {
   openaiApiKey: string
-  models: { chat: string, summarizer: string, judge: string, searcher: string }
+  models: { chat: string, summarizer: string, judge: string, searcher: string, memory: string }
   maxSteps: number
+  /** How many recent messages the chat model sees (10, "Recent window"). */
+  historyWindow: number
   /** A turn fails if one of its steps (model call plus tool calls) takes longer. */
   stepTimeoutMs: number
   stepLogPath: string
@@ -59,8 +63,10 @@ export function loadConfig(envFile = '.env'): Config {
       summarizer: env.MODEL_SUMMARIZER,
       judge: env.MODEL_JUDGE,
       searcher: env.MODEL_SEARCHER,
+      memory: env.MODEL_MEMORY,
     },
     maxSteps: env.MAX_STEPS,
+    historyWindow: env.HISTORY_WINDOW,
     stepTimeoutMs: env.STEP_TIMEOUT_MS,
     stepLogPath: env.STEP_LOG_PATH,
     catalogBaseUrl: env.DUMMYJSON_BASE_URL,

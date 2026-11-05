@@ -1,27 +1,10 @@
-MVP works. Need to polish things up before I can call it working
-Search workflow is much better now
-
 Issues:
 - The 'tops' category is still unstable in tests. It's too vague for proper results. Need to figure it out
 - The 'cheaper' price filter is too lax. It sets the price below the most expensive item, results in a near-identical list
 - Can I somehow 'search' by things like price without iterating through the entire list?
     Maybe sort results when price is involved to get more consistency?
-- Asking for shorts (no results) returned tool 'no products' reply but got stuck generating agent message leaves system stuck returning 429s (inconsistent)
-    Got to check how the client responds to a stuck server
-    Got to check why the server got stuck
 
 Fun stuff for later:
-    Auth + user management ❔
-    Context and Memory Management:
-        - Compactization
-        - Trimming
-        - Recovery
-        - Semantic highlights
-        - Insights worth persisting
-        * Can use Mastra memory tools including observational, semantic, and summarized memory if necessary
-    Concurrency:
-        Synchronous turns per chat is fine for now
-        Client can queue up messages if necessary
     Web component embeddable widget ❔
     MCP + MCP Apps/Markdown fallback ❔
 

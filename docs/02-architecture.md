@@ -43,6 +43,8 @@ When a decision changes, edit it in place and add a dated note. Don't silently r
   - `judge`: LLM-as-judge evals
 - Today all three roles map to `gpt-6-luna`.
 
+> **Note (2026-11-05):** two roles have been added: `searcher` (the `findProducts` workflow, 09) and `memory` (memory extraction, 10). `summarizer` now only writes chat titles, because there's no compaction (§7).
+
 **Why**
 - Swapping a model or provider, or one role only, becomes a config change.
 - Nothing outside the registry imports a provider package.
@@ -188,8 +190,8 @@ dummyjson is small and simple. Its limits drive the tool design more than prompt
 | `users` | id, name, created_at | A single **default user** exists from phase 3 until auth (phase 6) |
 | `chats` | id, user_id, title, created_at, updated_at | `user_id` is there from day one, which avoids a migration later |
 | `messages` | id, chat_id, role, parts (JSON), metadata (JSON), created_at | Stores AI SDK **`UIMessage`s**. Parts are kept as a JSON blob, not normalised |
-| `chat_summaries` | id, chat_id, covers_up_to_message_id, text, created_at | Derived data for context management (§7) |
-| `user_memories` *(later)* | id, user_id, content, embedding?, created_at | Preferences and insights. Optional |
+| ~~`chat_summaries`~~ | ~~id, chat_id, covers_up_to_message_id, text, created_at~~ | ~~Derived data for context management (§7)~~ Dropped (2026-11-05, 10): no summaries |
+| `memories` *(was `user_memories`)* | id, user_id, chat_id?, subject, text, source_message_id, created_at, updated_at | Facts about the user and the people they shop for. `chat_id` null = lasting. No embeddings (2026-11-05, 10) |
 
 - Store the **full** message list, including tool calls and tool results. Correct replay and product-tile rendering from history both need them.
 - The answer to disconnects is in §8.
@@ -209,6 +211,8 @@ This is the central concept of the memory work.
   1. **Slim tool outputs** (`toModelOutput`). The model gets id / title / price / rating / a short description. The UI gets the full product objects.
   2. **Prune old tool results** (`pruneMessages`). Earlier search results are dropped and their conclusions kept.
   3. **Summary + recent window.** The newest summary covers older messages, followed by the last N messages verbatim. Summaries are stored in `chat_summaries` and regenerated incrementally.
+
+> **Changed (2026-11-05, 10):** layers 2 and 3 are replaced by a **recent window** (the last `HISTORY_WINDOW` messages, no summary) plus **memories**: facts extracted after each turn, given to the chat agent in its instructions. Old tool results age out with the window, and the facts that matter outlive it as memories.
 
 **Why**
 - In this domain most context bloat comes from tool results, not conversation length. Layers 1 and 2 do most of the work cheaply. Layer 3 is the interesting learning part.

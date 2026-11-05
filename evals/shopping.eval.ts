@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { catalog, REQUIRED, runCase, TRIALS, type Check } from './harness.ts'
+import { catalog, REQUIRED, runCase, TRIALS, type Check, type Conversation } from './harness.ts'
 import * as c from './checks.ts'
 
 /**
@@ -10,7 +10,7 @@ import * as c from './checks.ts'
 
 const grounding: Check[] = [c.groundedProducts(catalog), c.groundedPrices, c.inStockOnly(catalog)]
 
-function evalCase(name: string, userTurns: string[], checks: Check[]) {
+function evalCase(name: string, userTurns: string[] | Conversation, checks: Check[]) {
   it(name, async () => {
     const passes = await runCase(name, userTurns, [...checks, ...grounding])
     console.log(`[${name}] ${passes}/${TRIALS}`)
@@ -29,7 +29,7 @@ const VAGUE: Array<{ prompt: string, plausible: string[] }> = [
   },
   {
     prompt: "My son's starting school",
-    plausible: ['laptops', 'tablets', 'mobile-accessories', 'smartphones', 'mens-shirts', 'mens-shoes', 'sports-accessories']
+    plausible: ['laptops', 'tablets', 'mobile-accessories', 'smartphones', 'mens-shirts', 'mens-shoes', 'mens-watches', 'sports-accessories']
   },
   {
     prompt: 'I just moved into a new apartment',
@@ -160,5 +160,42 @@ describe('search golden set (09)', () => {
       c.replyMatches(/\bships?\b[^.?!]*\b(overnight|\d+(-\d+)? (business )?(days?|weeks?|months?))\b/i, 'a shipping time'),
       c.replyDoesNotMatch(/\b(don'?t|do not) have\b[^.?!]*\b(shipping|information)\b/i, 'a "no shipping info" statement'),
     ]
+  )
+})
+
+describe('memory golden set (10)', () => {
+  const MALE = /\b(men|man|male|guy|gentlemen|gentleman)('?s)?\b/i
+
+  evalCase(
+    'memory: a lasting fact tailors a later chat',
+    { chats: [["Hi! Just so you know, I'm a man in my thirties."], ['Show me some watches for me']] },
+    [c.oneSearch, c.returnedPlausible(['mens-watches']), c.returnedNoneFrom(['womens-watches'])]
+  )
+
+  evalCase(
+    "memory: a gift search doesn't use the shopper's own facts",
+    { chats: [["I'm a guy, show me some watches for me"], ["I'd like to get my wife a watch as a gift"]] },
+    [
+      c.oneSearch,
+      c.returnedPlausible(['womens-watches', 'womens-jewellery']),
+      c.returnedNoneFrom(['mens-watches']),
+      c.requestDoesNotMatch(MALE, 'a male audience'),
+    ]
+  )
+
+  evalCase(
+    "memory: a gift doesn't change what is known about the shopper",
+    { chats: [["I'm a man. I need a birthday present for my wife, she loves perfume", 'surprise me']] },
+    [
+      c.remembers('self', MALE, 'the shopper is a man'),
+      c.doesNotRemember('self', /\b(wom[ae]n|female|perfume|fragrance)\b/i, 'the wife\'s facts'),
+    ]
+  )
+
+  // Window 1: the model sees only the newest message, so the budget can only come from memory.
+  evalCase(
+    'memory: a budget outside the window still applies',
+    { chats: [["Show me men's shoes, my budget is $80 at most", 'something different please']], historyWindow: 1 },
+    [c.oneSearch, c.returnedPlausible(['mens-shoes']), c.pricesAtMost(80)]
   )
 })
