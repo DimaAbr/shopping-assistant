@@ -18,12 +18,14 @@
     "typecheck": "tsc --noEmit",
     "eval": "vitest run --config evals/vitest.config.ts",
     "db:generate": "drizzle-kit generate",
-    "web": "pnpm --filter shopping-web dev"
+    "web": "pnpm --filter shopping-web dev",
+    "mcp-app": "pnpm --filter shopping-web build:mcp-app"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.106",
     "@hono/node-server": "^2.1.6",
     "@libsql/client": "^0.18.0",
+    "@modelcontextprotocol/ext-apps": "^1.7.5",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "ai": "^7.0.159",
     "drizzle-orm": "^0.45.4",

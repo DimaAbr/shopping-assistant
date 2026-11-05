@@ -15,15 +15,15 @@ const listing: ProductListing = {
 }
 
 describe('renderMarkdown', () => {
-  it('renders one section per group, with image, facts and description', () => {
+  it('renders one section per group and one heading per product, each line its own block', () => {
     const markdown = renderMarkdown({ status: 'ok', groups: [{ label: 'Lipstick', products: [listing] }], unmet: [] })
     expect(markdown).toBe([
       '## Lipstick',
-      '',
+      '### Red Lipstick',
       '![Red Lipstick](https://cdn.dummyjson.com/red.webp)',
-      '**Red Lipstick** (#7) — $12.50 · ★4.6',
+      '$12.50 · ★4.6 · #7',
       'A bold red.',
-    ].join('\n'))
+    ].join('\n\n'))
   })
 
   it('adds brand and shipping when present', () => {
@@ -32,7 +32,7 @@ describe('renderMarkdown', () => {
       groups: [{ label: 'Lipstick', products: [{ ...listing, brand: 'Glow', shippingInformation: 'Ships in 1 week' }] }],
       unmet: [],
     })
-    expect(markdown).toContain('— $12.50 · ★4.6 · Glow · Ships in 1 week')
+    expect(markdown).toContain('\n\n$12.50 · ★4.6 · Glow · Ships in 1 week · #7\n\n')
   })
 
   it('ends with the unmet needs', () => {

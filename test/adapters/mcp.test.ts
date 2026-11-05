@@ -5,7 +5,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 
-import { createMcpApp, FAILURE_TEXT, mcpToolDescription, TIMEOUT_TEXT, type McpOptions } from '../../src/adapters/mcp/server.ts'
+import { createMcpApp, FAILURE_TEXT, mcpToolDescription, PRODUCT_TILES_URI, TIMEOUT_TEXT, type McpOptions } from '../../src/adapters/mcp/server.ts'
 import { memorySink } from '../../src/observability/step-log.ts'
 import { categories, createFakeRepository, lipstickListings, unavailable } from '../helpers/fake-repository.ts'
 import { searchModel } from '../helpers/search-model.ts'
@@ -23,6 +23,7 @@ function setup(overrides: Partial<McpOptions> = {}) {
     logSink: sink,
     timeoutMs: 5_000,
     onToolError: error => errors.push(error),
+    imageOrigins: ['https://cdn.example.com'],
     ...overrides,
   })
   return { app, sink, errors }
@@ -57,6 +58,31 @@ describe('MCP endpoint', () => {
     expect(tool!.annotations?.readOnlyHint).toBe(true)
   })
 
+  it('without the widget, has no MCP App: no UI link and no resources', async () => {
+    const client = await connect(setup().app)
+    const { tools } = await client.listTools()
+
+    expect(tools[0]!._meta?.ui).toBeUndefined()
+    expect(client.getServerCapabilities()?.resources).toBeUndefined()
+  })
+
+  it('with the widget, links the tool to it and serves it with the image CSP', async () => {
+    const client = await connect(setup({ appHtml: '<!doctype html><p>tiles</p>' }).app)
+    const { tools } = await client.listTools()
+    expect(tools[0]!._meta?.ui).toEqual({ resourceUri: PRODUCT_TILES_URI })
+
+    const { contents } = await client.readResource({ uri: PRODUCT_TILES_URI })
+    expect(contents).toEqual([{
+      uri: PRODUCT_TILES_URI,
+      mimeType: 'text/html;profile=mcp-app',
+      text: '<!doctype html><p>tiles</p>',
+      _meta: { ui: { csp: { resourceDomains: ['https://cdn.example.com'] }, prefersBorder: false } },
+    }])
+
+    const result = await call(client, { request: 'red lipstick' })
+    expect(result.structuredContent).toEqual({ status: 'ok', groups: [{ label: 'Lipstick', products: lipstickListings }], unmet: [] })
+  })
+
   it('returns the products as markdown and the whole result as structured content', async () => {
     const client = await connect(setup().app)
     const result = await call(client, { request: 'red lipstick' })
@@ -64,7 +90,7 @@ describe('MCP endpoint', () => {
     expect(result.isError).toBeFalsy()
     expect(result.structuredContent).toEqual({ status: 'ok', groups: [{ label: 'Lipstick', products: lipstickListings }], unmet: [] })
     for (const product of lipstickListings) {
-      expect(text(result)).toContain(`**${product.title}**`)
+      expect(text(result)).toContain(`### ${product.title}`)
       expect(text(result)).toContain(`$${product.price.toFixed(2)}`)
       expect(text(result)).toContain(`](${product.imageUrl})`)
     }

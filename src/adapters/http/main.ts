@@ -1,8 +1,10 @@
+import { readFile } from 'node:fs/promises'
 import { serve } from '@hono/node-server'
 
 import { bootstrap } from '../bootstrap.ts'
 import { createMcpApp, MCP_PATH } from '../mcp/server.ts'
 import { createApi } from './app.ts'
+import { DUMMYJSON_IMAGE_ORIGINS } from '../../domain/product-repository.ts'
 
 /**
  * HTTP API server — `pnpm api` (07), with the MCP endpoint at `/mcp` (11). Ctrl+C / SIGTERM stops accepting requests,
@@ -11,6 +13,9 @@ import { createApi } from './app.ts'
 
 /** How long shutdown waits for running turns and titles. */
 const SHUTDOWN_GRACE_MS = 10_000
+
+/** The MCP App widget, built by `pnpm mcp-app` (11). */
+const MCP_APP_FILE = new URL('../../../web/dist-mcp-app/mcp-app.html', import.meta.url)
 
 const { config, db, repo, categories, searchModel, logSink, service, defaultUserId } = await bootstrap({
   onBackgroundError: (error, { chatId, task }) => console.error(`[${task}] chat ${chatId}:`, error),
@@ -22,6 +27,8 @@ const api = createApi({
   onTurnError: (error, { chatId }) => console.error(`[turn] chat ${chatId} (not saved):`, error),
 })
 
+const appHtml = await readFile(MCP_APP_FILE, 'utf8').catch(() => undefined)
+
 api.app.route('/', createMcpApp({
   repo,
   searchModel,
@@ -29,12 +36,15 @@ api.app.route('/', createMcpApp({
   logSink,
   timeoutMs: config.stepTimeoutMs,
   onToolError: error => console.error('[mcp] findProducts:', error),
+  appHtml,
+  imageOrigins: DUMMYJSON_IMAGE_ORIGINS,
 }))
 
 const server = serve({ fetch: api.app.fetch, port: config.port }, info => {
   console.log(`model: ${config.models.chat} — ${categories.length} categories`)
   console.log(`listening on http://localhost:${info.port}`)
   console.log(`MCP endpoint: http://localhost:${info.port}${MCP_PATH}`)
+  if (appHtml === undefined) console.log('MCP App not built (pnpm mcp-app): MCP results are markdown only')
 })
 
 let stopping = false

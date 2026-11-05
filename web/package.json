@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:mcp-app": "vite build --config vite.mcp-app.config.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -14,6 +15,8 @@
     "@assistant-ui/react": "^0.15.32",
     "@assistant-ui/react-ai-sdk": "^1.4.21",
     "@assistant-ui/react-markdown": "^0.14.24",
+    "@modelcontextprotocol/ext-apps": "^1.7.5",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "ai": "^7.0.162",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
@@ -27,6 +30,7 @@
     "shopping-assistant": "workspace:*",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
+    "vite-plugin-singlefile": "^2.3.4",
     "vitest": "^5.1.0"
   }
 }

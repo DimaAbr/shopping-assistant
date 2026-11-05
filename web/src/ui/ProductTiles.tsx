@@ -11,7 +11,13 @@ import styles from './ProductTiles.module.css'
 
 type ToolArgs = { request?: string, minPrice?: number, maxPrice?: number }
 
-export const ProductTiles: ToolCallMessagePartComponent<ToolArgs, ShoppingToolResult> = ({ result }) => {
+export const ProductTiles: ToolCallMessagePartComponent<ToolArgs, ShoppingToolResult> = ({ result }) => <ProductResults result={result} />
+
+/**
+ * The tiles for a `findProducts` result, or a skeleton while there's none yet.
+ * Shared by the chat (`ProductTiles`) and the MCP App (`src/mcp-app`, 11).
+ */
+export function ProductResults({ result }: { result: ShoppingToolResult | undefined }) {
   if (result === undefined) {
     return (
       <div className={styles.results} aria-busy="true" aria-label="Searching">

@@ -21,6 +21,12 @@ export class CatalogUnavailableError extends Error {
   override name = 'CatalogUnavailableError'
 }
 
+/**
+ * Where dummyjson's product images live. They don't come from the API's base
+ * URL, so a page that shows them (the MCP App's CSP, 11) needs this separately.
+ */
+export const DUMMYJSON_IMAGE_ORIGINS: readonly string[] = ['https://cdn.dummyjson.com']
+
 export type DummyJsonRepositoryOptions = {
   baseUrl:    string
   /** Injectable for tests. Defaults to the global `fetch`. */

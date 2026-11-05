@@ -4,9 +4,10 @@ import type { LanguageModel } from 'ai'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import { RESOURCE_MIME_TYPE, registerAppResource, registerAppTool } from '@modelcontextprotocol/ext-apps/server'
 
 import { FindProductsInputSchema } from '../../agent/tools.ts'
-import { findProducts } from '../../agent/search/find-products.ts'
+import { findProducts, type FindProductsInput } from '../../agent/search/find-products.ts'
 import { modelCallLog } from '../../agent/search/log.ts'
 import type { ProductRepository } from '../../domain/product-repository.ts'
 import type { StepLogSink } from '../../observability/step-log.ts'
@@ -23,6 +24,9 @@ import { renderMarkdown } from './render.ts'
  * - **Results:** markdown with image links for the host and its model, and the
  *   whole `ShoppingToolResult` as `structuredContent`. There's no `outputSchema`:
  *   MCP needs an object schema and the result is a union.
+ * - **MCP App:** when the widget is built (`appHtml`), the tool points to it
+ *   (`_meta.ui.resourceUri`) and hosts that support MCP Apps render the tiles
+ *   from `structuredContent`. Other hosts show the markdown.
  * - **Bounded:** each call is cut off after `timeoutMs`, like a chat step.
  * - **Local only:** requests must come to a localhost host, and from a localhost
  *   origin when they carry one (the spec's DNS-rebinding rule for local servers).
@@ -33,6 +37,9 @@ export const MCP_PATH = '/mcp'
 export const TIMEOUT_TEXT = 'The search took too long. Try again.'
 export const FAILURE_TEXT = 'The search failed. Try again.'
 
+/** The product tiles widget (`web/src/mcp-app`). */
+export const PRODUCT_TILES_URI = 'ui://shopping/product-tiles.html'
+
 export type McpOptions = {
   repo: ProductRepository
   /** The model for the workflow's own calls (the `searcher` role). */
@@ -42,6 +49,10 @@ export type McpOptions = {
   timeoutMs: number
   /** A call that failed with something other than a timeout. */
   onToolError?: (error: unknown) => void
+  /** The built MCP App widget (`pnpm mcp-app`). Without it, results are markdown only. */
+  appHtml?: string
+  /** Where product images come from: the widget's CSP allows only these. */
+  imageOrigins: readonly string[]
 }
 
 export function createMcpApp(options: McpOptions) {
@@ -68,12 +79,13 @@ export function createMcpApp(options: McpOptions) {
 export function createMcpServer(options: McpOptions) {
   const server = new McpServer({ name: 'shopping-assistant', version: '0.0.0' })
 
-  server.registerTool('findProducts', {
+  const config = {
     title: 'Find products',
     description: mcpToolDescription(options.categories),
     inputSchema: FindProductsInputSchema,
     annotations: { readOnlyHint: true },
-  }, async (input, extra): Promise<CallToolResult> => {
+  }
+  const handler = async (input: FindProductsInput, extra: { signal: AbortSignal }): Promise<CallToolResult> => {
     const timeout = AbortSignal.timeout(options.timeoutMs)
     try {
       const result = await findProducts(input, {
@@ -89,7 +101,23 @@ export function createMcpServer(options: McpOptions) {
       options.onToolError?.(error)
       return { content: [{ type: 'text', text: FAILURE_TEXT }], isError: true }
     }
-  })
+  }
+
+  const { appHtml } = options
+  if (appHtml === undefined) {
+    server.registerTool('findProducts', config, handler)
+    return server
+  }
+
+  registerAppTool(server, 'findProducts', { ...config, _meta: { ui: { resourceUri: PRODUCT_TILES_URI } } }, handler)
+  registerAppResource(server, 'Product tiles', PRODUCT_TILES_URI, { description: 'Product search results as tiles' }, async () => ({
+    contents: [{
+      uri: PRODUCT_TILES_URI,
+      mimeType: RESOURCE_MIME_TYPE,
+      text: appHtml,
+      _meta: { ui: { csp: { resourceDomains: [...options.imageOrigins] }, prefersBorder: false } },
+    }],
+  }))
 
   return server
 }

@@ -1,0 +1,10 @@
+/* The host draws the frame and background around the widget. */
+html,
+body {
+  background: transparent;
+}
+
+.mcp-app-note {
+  margin: 0;
+  color: var(--text-muted);
+}

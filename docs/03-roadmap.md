@@ -237,8 +237,8 @@ Phase records: [07-phase-5-http-api.md](07-phase-5-http-api.md) (API), [08-phase
 - `@modelcontextprotocol/sdk` Streamable HTTP endpoint, mounted in Hono. `[x]`
 - ~~Anonymous sessions, possibly with a persistent opaque id.~~ Dropped (2026-11-05, 11): the tool is stateless, so the endpoint is too.
 - Rendering for other clients:
-  - a markdown fallback (list with image links) `[x]`
-  - optionally **MCP Apps** for hosts that support them (deferred, 11)
+  - a markdown fallback (one heading per product, image links) `[x]`
+  - **MCP Apps** for hosts that support them: the chat's tiles as a `ui://` widget `[x]` (2026-11-05, 11)
 
 **Done when**
 - [x] MCP Inspector can list and call the tools.
