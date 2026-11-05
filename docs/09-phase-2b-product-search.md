@@ -115,7 +115,7 @@ How we got there:
 3. **Second full run:** 14/17.
    - **school, 3/5:** as above.
    - **appliance, 2/5:** one more regex gap ("No air fryers matched"). In two trials the model said "we don't carry air fryers" without searching, guessing from the category names. That's the same kind of assumption as the `tops` note. The chat prompt now says category names are only hints: search whenever a category could plausibly hold the item.
-   - **budget refinement, 3/5:** "set maxPrice below the prices you showed" was read as below the *cheapest* (`maxPrice: 79.98`, nothing matched). It now says "just below the most expensive product you showed".
+   - **budget refinement, 3/5:** "set maxPrice below the prices you showed" was read as below the *cheapest* (`maxPrice: 79.98`, nothing matched). It now says "just below the most expensive product you showed". Later (2026-11-05) that proved too lax: it dropped only one product, so "cheaper" showed nearly the same list. It now says "just below the median price of the products you showed", and if nothing is cheaper, the reply says the products shown are the cheapest.
 
 Manual end-to-end check (2026-11-04, `pnpm api`, live model, scratch DB):
 - "I'm starting to work out…" → a clarifying question.

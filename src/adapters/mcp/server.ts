@@ -137,7 +137,8 @@ export function mcpToolDescription(categories: readonly string[]): string {
     '- Make the request self-contained: who the products are for, what for, when they are needed, and any preferences from the conversation.',
     "- Use only what you know about the person the products are for. For a gift, that person's details, not the shopper's own.",
     '- Put budgets in minPrice / maxPrice (USD), not in the request.',
-    '- For a refinement ("something cheaper", "more for running"), call again with the updated request and prices.',
+    '- For a refinement ("something cheaper", "more for running"), call again with the updated request and prices. ' +
+    'For "cheaper" without a number, set maxPrice just below the median price of the products shown.',
     '',
     'Reading the result:',
     '- Only the products returned exist for this store. Quote titles and prices exactly; never add products, specs, colours, sizes or stock details.',

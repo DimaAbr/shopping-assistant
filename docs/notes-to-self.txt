@@ -1,13 +1,5 @@
-Issues:
-- The 'tops' category is still unstable in tests. It's too vague for proper results. Need to figure it out
-- The 'cheaper' price filter is too lax. It sets the price below the most expensive item, results in a near-identical list
-- Can I somehow 'search' by things like price without iterating through the entire list?
-    Maybe sort results when price is involved to get more consistency?
-
 Fun stuff for later:
     Web component embeddable widget ❔
-    MCP + MCP Apps/Markdown fallback
-        Add better UI ❔
 
 To Read up:
     Alternatives to evalite.
