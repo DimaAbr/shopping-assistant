@@ -30,6 +30,11 @@ export type ChatSessionOptions<TOOLS extends ToolSet = ToolSet> = {
   instructions?: string
   tools?: TOOLS
   maxSteps: number
+  /**
+   * The longest one step may take: the model call plus its tool calls. A step
+   * that runs longer fails the turn, so a hung model call can't hold a chat forever.
+   */
+  stepTimeoutMs: number
   logSink: StepLogSink
   /** Prior history, e.g. loaded from the store when a chat is resumed. */
   initialMessages?: readonly UIMessage[]
@@ -81,6 +86,7 @@ export function createChatSession<TOOLS extends ToolSet = ToolSet>(options: Chat
       messages: await convertToModelMessages(originalMessages, { tools: options.tools }),
       tools: options.tools,
       stopWhen: isStepCount(options.maxSteps),
+      timeout: { stepMs: options.stepTimeoutMs },
       // The last allowed step must answer in text, so a turn never ends on an
       // unanswered tool call when it hits the step limit.
       prepareStep: ({ stepNumber }) => stepNumber >= options.maxSteps - 1 ? { toolChoice: 'none' } : {},
@@ -121,7 +127,7 @@ export function createChatSession<TOOLS extends ToolSet = ToolSet>(options: Chat
     return {
       textStream: result.textStream,
       fullStream: result.stream,
-      uiStream: uiForAdapter,
+      uiStream: uiForAdapter.pipeThrough(timeoutAsError()),
       done,
     }
   }
@@ -134,6 +140,24 @@ export function createChatSession<TOOLS extends ToolSet = ToolSet>(options: Chat
 }
 
 export type ChatSession<TOOLS extends ToolSet = ToolSet> = ReturnType<typeof createChatSession<TOOLS>>
+
+export const TIMEOUT_ERROR_TEXT = 'The reply took too long. Please try again.'
+
+/**
+ * Only a timeout aborts a turn: client disconnects never reach the session. The
+ * SDK reports it as an `abort` chunk, which `useChat` treats as the user pressing
+ * stop, so the client is told it failed instead.
+ */
+function timeoutAsError() {
+  return new TransformStream<UIMessageChunk, UIMessageChunk>({
+    transform(chunk, controller) {
+      controller.enqueue(chunk.type === 'abort'
+        ? { type: 'error', errorText: TIMEOUT_ERROR_TEXT }
+        : chunk
+      )
+    },
+  })
+}
 
 async function drain(stream: ReadableStream<unknown>) {
   const reader = stream.getReader()

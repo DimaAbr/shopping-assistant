@@ -1,7 +1,7 @@
-import { AssistantRuntimeProvider, ComposerPrimitive, MessagePrimitive, ThreadPrimitive } from '@assistant-ui/react'
+import { AssistantRuntimeProvider, ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAui } from '@assistant-ui/react'
 import { useAISDKRuntime } from '@assistant-ui/react-ai-sdk'
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
-import { type RefObject, useCallback, useLayoutEffect, useRef } from 'react'
+import { type KeyboardEvent, type RefObject, useCallback, useLayoutEffect, useRef } from 'react'
 import type { UIMessage } from 'ai'
 
 import { describeChatError, useChatHistory, useEarlierMessages, useShoppingChat } from '../core/index.ts'
@@ -137,15 +137,26 @@ function AssistantMessage() {
 }
 
 function Composer() {
+  const aui = useAui()
+  const isRunning = aui.thread.getState().isRunning
+
+  // While a reply streams, assistant-ui ignores Enter but lets it insert a newline,
+  // which reads as a broken send. Swallow it instead; Shift+Enter still adds a line.
+  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === 'Enter' && !event.shiftKey && isRunning)
+      event.preventDefault()
+  }
+
   return (
     <ComposerPrimitive.Root className={styles.composer}>
-      <ComposerPrimitive.Input className={styles.input} placeholder="Ask about products…" rows={1} autoFocus />
-      <ThreadPrimitive.If running={false}>
-        <ComposerPrimitive.Send className={styles.button}>Send</ComposerPrimitive.Send>
-      </ThreadPrimitive.If>
-      <ThreadPrimitive.If running>
-        <ComposerPrimitive.Cancel className={styles.button}>Stop</ComposerPrimitive.Cancel>
-      </ThreadPrimitive.If>
+      <ComposerPrimitive.Input
+        className={styles.input}
+        placeholder="Ask about products…"
+        rows={1}
+        autoFocus
+        onKeyDown={onKeyDown}
+      />
+      <ComposerPrimitive.Send className={styles.button} disabled={isRunning}>Send</ComposerPrimitive.Send>
     </ComposerPrimitive.Root>
   )
 }

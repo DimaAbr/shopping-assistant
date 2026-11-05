@@ -39,7 +39,7 @@ Checked against the installed packages before building:
 - `ThreadPrimitive.Messages` takes a render function `({ message }) => …` (the `components` prop is deprecated).
 - `@assistant-ui/react-markdown` gives an unstyled `MarkdownTextPrimitive` (react-markdown underneath).
 - `HttpChatTransport` keeps constructor `headers` when `prepareSendMessagesRequest` doesn't return any, and lets it override `api` per request.
-- A failed POST (400 / 409 / 500) reaches `useChat` as an `APICallError` with `statusCode` and the raw body; `describeChatError` turns it into a short message (409: "still being saved").
+- A failed POST (400 / 409 / 500) reaches `useChat` as an `APICallError` with `statusCode` and the raw body; `describeChatError` turns it into a short message (409: "still in progress").
 
 ## Identity
 
@@ -78,6 +78,7 @@ identity: { userId: 'u-42' }  ──▶ X-User-Id: u-42                   ──
 - `App.tsx`: the sidebar plus the active chat (hash-based). Below 40rem the sidebar is an off-canvas drawer behind a menu button (closes on select, backdrop, Escape)
 - `Sidebar.tsx`: our own chat list
 - `Thread.tsx`: assistant-ui primitives. User/assistant messages, markdown text, tool parts → `ProductTiles`, encrypted reasoning parts hidden, a composer with Send/Stop, scroll-to-bottom, inline errors
+  - While a reply streams, Enter does nothing. assistant-ui would insert a newline, which looks like a send that failed. Stop only ends the client's request: the server turn keeps running and is saved (07), so a Send right after Stop can get 409.
 - `ProductTiles.tsx`: the product widget. Image, title, price, and the description trimmed to 3 lines in CSS (07: the full description is sent). Below a 30rem container width (container query, so embeds behave too) tiles become compact rows with the image beside the text
 - `*.module.css` + `global.css`: design tokens as CSS variables (light and dark), so a host theme only overrides variables. `color-scheme: light dark` is declared, and buttons inherit `color`, so native controls follow the theme
 

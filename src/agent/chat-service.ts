@@ -23,6 +23,8 @@ export type ChatServiceOptions<TOOLS extends ToolSet = ToolSet> = {
   instructions?: string
   tools?: TOOLS
   maxSteps: number
+  /** See `ChatSessionOptions.stepTimeoutMs`. */
+  stepTimeoutMs: number
   logSink: StepLogSink
   /** Background failures (title generation). Default: ignored. */
   onBackgroundError?: (error: unknown, context: { chatId: string, task: 'title' }) => void
@@ -52,6 +54,7 @@ export function createChatService<TOOLS extends ToolSet = ToolSet>(options: Chat
       instructions: options.instructions,
       tools: options.tools,
       maxSteps: options.maxSteps,
+      stepTimeoutMs: options.stepTimeoutMs,
       logSink: options.logSink,
       initialMessages,
       onTurnEnd: async newMessages => {

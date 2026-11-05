@@ -54,10 +54,21 @@ const text = (id: string, role: 'user' | 'assistant', value: string): UIMessage 
 const older: UIMessage[] = [text('u1', 'user', 'first question'), text('a1', 'assistant', 'first answer')]
 const newer: UIMessage[] = [text('u2', 'user', 'second question'), text('a2', 'assistant', 'second answer')]
 
-function fakeApi() {
-  return (async (input: RequestInfo | URL) => {
+/** A reply stream that starts and never finishes: a turn still in progress. */
+const hangingReply = () => new Response(
+  new ReadableStream({ start: controller => controller.enqueue(new TextEncoder().encode('data: {"type":"start"}\n\n')) }),
+  { headers: { 'content-type': 'text/event-stream' } },
+)
+
+function fakeApi(posts: string[] = []) {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
+
+    if (init?.method === 'POST') {
+      posts.push(url)
+      return hangingReply()
+    }
 
     if (url === '/api/chats')
       return reply([{ id: 'chat-1', title: 'Lipstick shopping', firstText: 'show me lipstick', createdAt: '2026-11-04T10:00:00Z', updatedAt: '2026-11-04T10:00:00Z' }])
@@ -70,9 +81,9 @@ function fakeApi() {
   }) as typeof fetch
 }
 
-const renderApp = () =>
+const renderApp = (posts?: string[]) =>
   render(
-    <ShoppingProvider config={{ apiBaseUrl: '/api', identity: { userId: 'u' }, fetch: fakeApi() }}>
+    <ShoppingProvider config={{ apiBaseUrl: '/api', identity: { userId: 'u' }, fetch: fakeApi(posts) }}>
       <App />
     </ShoppingProvider>,
   )
@@ -108,6 +119,22 @@ describe('app', () => {
     expect(await screen.findByText('first question', { selector: 'main *' })).toBeTruthy()
     expect(screen.getByText('second question', { selector: 'main *' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Load earlier messages' })).toBeNull()
+  })
+
+  it('swallows Enter while a reply is streaming, instead of adding a newline', async () => {
+    const posts: string[] = []
+    renderApp(posts)
+    const input = await screen.findByPlaceholderText('Ask about products…')
+
+    fireEvent.change(input, { target: { value: 'shorts' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await screen.findByRole('button', { name: 'Stop' })
+
+    fireEvent.change(input, { target: { value: 'hello?' } })
+    const notPrevented = fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(notPrevented).toBe(false)
+    expect(posts).toHaveLength(1)
   })
 
   it('opens the chat list from the menu button and closes it on select', async () => {

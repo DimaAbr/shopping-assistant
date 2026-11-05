@@ -41,11 +41,13 @@ export async function filterRelevant(options: {
   request: string
   needs: NeedCandidates[]
   log?: ModelCallLog
+  abortSignal?: AbortSignal
 }): Promise<number[][]> {
   if (options.needs.every(need => need.candidates.length === 0)) return options.needs.map(() => [])
 
   const { output } = await generateText({
     model: options.model,
+    abortSignal: options.abortSignal,
     instructions: RELEVANCE_INSTRUCTIONS,
     prompt: buildRelevancePrompt(options.request, options.needs),
     output: Output.object({ schema: relevanceSchema, name: 'relevant_products' }),

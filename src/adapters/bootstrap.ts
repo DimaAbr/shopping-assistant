@@ -38,6 +38,7 @@ export async function bootstrap(options: Pick<ChatServiceOptions<ShoppingTools>,
     instructions: buildInstructions(categories),
     tools: createShoppingTools(repo, categories, { searchModel: models.getModel('searcher'), logSink }),
     maxSteps: config.maxSteps,
+    stepTimeoutMs: config.stepTimeoutMs,
     logSink,
     onBackgroundError: options.onBackgroundError,
   })

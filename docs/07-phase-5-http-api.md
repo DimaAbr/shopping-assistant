@@ -72,6 +72,7 @@ Errors are JSON `{ error }`: 400 for validation, 404 for unknown chats and route
 ## Behaviour worth knowing
 
 - **A chat stays busy until its turn is saved, not until the response ends.** After a disconnect, the next POST may get 409 for a moment.
+- **Every step has a time limit** (`STEP_TIMEOUT_MS`, default 60 s: the model call plus its tool calls, which get the abort signal). A hung model call used to keep a chat busy (409) until the server restarted. Now the turn fails, isn't saved, the chat is freed and the client gets an `error` chunk. The SDK reports a timeout as `abort`, which `useChat` would treat as the user pressing Stop, so the session turns it into `error` (`TIMEOUT_ERROR_TEXT` in `agent/chat.ts`). Added 2026-11-05.
 - **Shutdown** (Ctrl+C / SIGTERM) stops accepting requests, then waits up to 10 s for running turns and pending titles before closing the DB. A second Ctrl+C quits at once.
 - **The busy set is in-memory**, so it's per process. Fine for a single local server.
 - **If saving fails after the stream has finished,** the client has already seen `finish`, but the turn isn't stored. It's logged via `onTurnError`. That's rare for local SQLite. Revisit if it matters.

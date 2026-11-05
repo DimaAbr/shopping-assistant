@@ -47,6 +47,7 @@ export async function converse(userTurns: string[]): Promise<TurnRecord[]> {
     instructions: buildInstructions(categories),
     tools: createShoppingTools(repo, categories, { searchModel: models.getModel('searcher'), logSink }),
     maxSteps: config.maxSteps,
+    stepTimeoutMs: config.stepTimeoutMs,
     logSink,
   })
 

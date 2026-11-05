@@ -20,6 +20,7 @@ const EnvSchema = z.object({
   MODEL_SEARCHER: z.string().min(1).default(DEFAULT_MODEL),
 
   MAX_STEPS: z.coerce.number().int().positive().default(5),
+  STEP_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
   STEP_LOG_PATH: z.string().min(1).default('logs/steps.jsonl'),
 
   DUMMYJSON_BASE_URL: z.url().default('https://dummyjson.com'),
@@ -33,6 +34,8 @@ export type Config = {
   openaiApiKey: string
   models: { chat: string, summarizer: string, judge: string, searcher: string }
   maxSteps: number
+  /** A turn fails if one of its steps (model call plus tool calls) takes longer. */
+  stepTimeoutMs: number
   stepLogPath: string
   catalogBaseUrl: string
   databaseUrl: string
@@ -58,6 +61,7 @@ export function loadConfig(envFile = '.env'): Config {
       searcher: env.MODEL_SEARCHER,
     },
     maxSteps: env.MAX_STEPS,
+    stepTimeoutMs: env.STEP_TIMEOUT_MS,
     stepLogPath: env.STEP_LOG_PATH,
     catalogBaseUrl: env.DUMMYJSON_BASE_URL,
     databaseUrl: env.DATABASE_URL,

@@ -19,6 +19,7 @@ async function newService(chat: MockLanguageModelV4, summarizer = new MockLangua
     summarizer,
     tools: testShoppingTools(),
     maxSteps: 3,
+    stepTimeoutMs: 10_000,
     logSink: memorySink(),
     onBackgroundError: error => { errors.push(error) },
   }).forUser(DEFAULT_USER_ID)

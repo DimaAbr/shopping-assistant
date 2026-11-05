@@ -48,6 +48,8 @@ export type FindProductsDeps = {
   model: LanguageModel
   categories: readonly string[]
   log?: ModelCallLog
+  /** Cancels the workflow's model calls, e.g. when the chat step times out. */
+  abortSignal?: AbortSignal
 }
 
 type NeedState = {
@@ -59,7 +61,7 @@ type NeedState = {
 }
 
 export async function findProducts(input: FindProductsInput, deps: FindProductsDeps): Promise<FindProductsResult> {
-  const plan = await planSearch({ model: deps.model, request: input.request, categories: deps.categories, log: deps.log })
+  const plan = await planSearch({ model: deps.model, request: input.request, categories: deps.categories, log: deps.log, abortSignal: deps.abortSignal })
   if (plan.needs.length === 0) return { status: 'no_match', unmet: [input.request] }
 
   try {
@@ -102,6 +104,7 @@ async function judge(states: NeedState[], pages: QueryPage[][], input: FindProdu
     request: input.request,
     needs: states.map((state, index) => ({ label: state.need.label, candidates: candidates[index]! })),
     log: deps.log,
+    abortSignal: deps.abortSignal,
   })
 
   states.forEach((state, index) => {

@@ -107,7 +107,7 @@ function textParts(message: UIMessage) {
  */
 export function describeChatError(error: Error): string {
   if (APICallError.isInstance(error)) {
-    if (error.statusCode === 409) return 'The previous reply is still being saved. Try again in a moment.'
+    if (error.statusCode === 409) return 'The previous reply is still in progress. Try again in a moment.'
 
     const body = parseErrorBody(error.responseBody)
     return `The request failed (${error.statusCode ?? 'network'}): ${body ?? error.message}`

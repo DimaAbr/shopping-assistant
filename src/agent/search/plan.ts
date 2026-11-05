@@ -56,9 +56,11 @@ export async function planSearch(options: {
   request: string
   categories: readonly string[]
   log?: ModelCallLog
+  abortSignal?: AbortSignal
 }): Promise<SearchPlan> {
   const { output } = await generateText({
     model: options.model,
+    abortSignal: options.abortSignal,
     instructions: buildPlanInstructions(options.categories),
     prompt: `<request>${options.request}</request>`,
     output: Output.object({ schema: planSchema(options.categories), name: 'search_plan' }),

@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import type { UIMessage } from 'ai'
 
-import { createChatSession } from '../../src/agent/chat.ts'
+import { createChatSession, TIMEOUT_ERROR_TEXT } from '../../src/agent/chat.ts'
 import { memorySink } from '../../src/observability/step-log.ts'
 import { createFakeRepository, testShoppingTools, unavailable } from '../helpers/fake-repository.ts'
-import { collect, textReply, toolCallReply } from '../helpers/mock-model.ts'
+import { collect, gatedTextReply, textReply, toolCallReply } from '../helpers/mock-model.ts'
 
 function newSession(model: MockLanguageModelV4) {
   const sink = memorySink()
@@ -14,6 +14,7 @@ function newSession(model: MockLanguageModelV4) {
     chatId: 'chat-1',
     instructions: 'be nice',
     maxSteps: 3,
+    stepTimeoutMs: 10_000,
     logSink: sink,
   })
   return { session, sink }
@@ -83,6 +84,31 @@ describe('chat session', () => {
   })
 })
 
+describe('chat session step timeout', () => {
+  it('fails a step that runs too long, rolls back, and reports an error chunk instead of an abort', async () => {
+    const hung = gatedTextReply('Hel', 'never sent')
+    const saved: UIMessage[][] = []
+    const session = createChatSession({
+      model: new MockLanguageModelV4({ doStream: [hung.reply] }),
+      chatId: 'chat-1',
+      maxSteps: 3,
+      stepTimeoutMs: 50,
+      logSink: memorySink(),
+      onTurnEnd: async messages => { saved.push(messages) },
+    })
+
+    const turn = await session.send('hi')
+    const chunks = []
+    for await (const chunk of turn.uiStream) chunks.push(chunk)
+
+    await expect(turn.done).rejects.toMatchObject({ name: 'TimeoutError' })
+    expect(chunks.map(chunk => chunk.type)).not.toContain('abort')
+    expect(chunks).toContainEqual({ type: 'error', errorText: TIMEOUT_ERROR_TEXT })
+    expect(session.history).toEqual([])
+    expect(saved).toEqual([])
+  })
+})
+
 describe('chat session with shopping tools', () => {
   function newToolSession(model: MockLanguageModelV4, options: { maxSteps?: number, repo?: ReturnType<typeof createFakeRepository> } = {}) {
     const repo = options.repo ?? createFakeRepository()
@@ -93,6 +119,7 @@ describe('chat session with shopping tools', () => {
       instructions: 'be nice',
       tools: testShoppingTools(repo),
       maxSteps: options.maxSteps ?? 3,
+      stepTimeoutMs: 10_000,
       logSink: sink,
     })
     return { session, sink, repo }
@@ -189,6 +216,7 @@ describe('chat session persistence hooks', () => {
       instructions: 'be nice',
       tools: testShoppingTools(),
       maxSteps: 3,
+      stepTimeoutMs: 10_000,
       logSink: memorySink(),
       initialMessages: options.initialMessages,
       onTurnEnd: options.onTurnEnd ?? (async messages => { saved.push(messages) }),
@@ -260,6 +288,7 @@ describe('chat session persistence hooks', () => {
       chatId: 'chat-1',
       tools: testShoppingTools(),
       maxSteps: 3,
+      stepTimeoutMs: 10_000,
       logSink: sink,
       initialMessages: stored,
     })

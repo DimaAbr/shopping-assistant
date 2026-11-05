@@ -9,12 +9,13 @@ import { ProductCardSchema } from '../../src/domain/product-card.ts'
 import { DEFAULT_USER_ID } from '../../src/store/chat-store.ts'
 import { memorySink } from '../../src/observability/step-log.ts'
 import { testShoppingTools } from '../helpers/fake-repository.ts'
+import { TIMEOUT_ERROR_TEXT } from '../../src/agent/chat.ts'
 import { gatedTextReply, generatedText, textReply, toolCallReply } from '../helpers/mock-model.ts'
 import { memoryStore } from '../helpers/store.ts'
 
 type Reply = ReturnType<typeof textReply>
 
-async function newApi(replies: Reply[]) {
+async function newApi(replies: Reply[], options: { stepTimeoutMs?: number } = {}) {
   const store = await memoryStore()
   await store.ensureDefaultUser()
 
@@ -24,6 +25,7 @@ async function newApi(replies: Reply[]) {
     summarizer: new MockLanguageModelV4({ doGenerate: generatedText('Lipstick shopping') }),
     tools: testShoppingTools(),
     maxSteps: 3,
+    stepTimeoutMs: options.stepTimeoutMs ?? 10_000,
     logSink: memorySink(),
   })
 
@@ -120,6 +122,26 @@ describe('POST /chats/:id/messages', () => {
     await settled()
 
     expect((await send(app, 'chat-1', userMessage('again'))).status).toBe(200)
+    await settled()
+  })
+
+  it('times out a hung step, reports it as an error and frees the chat', async () => {
+    // The model never finishes its reply after the tool result.
+    const hung = gatedTextReply('', 'never sent')
+    const { app, store, settled, turnErrors } = await newApi(
+      [toolCallReply('findProducts', { request: 'shorts' }), hung.reply, textReply(['Here you go.'])],
+      { stepTimeoutMs: 200 },
+    )
+
+    const chunks = await chunksOf(await send(app, 'chat-1', userMessage('shorts')))
+    await settled()
+
+    expect(chunks.map(chunk => chunk.type)).not.toContain('abort')
+    expect(chunks).toContainEqual({ type: 'error', errorText: TIMEOUT_ERROR_TEXT })
+    expect(turnErrors).toEqual([expect.objectContaining({ name: 'TimeoutError' })])
+    expect(await store.listChats(DEFAULT_USER_ID)).toEqual([])
+
+    expect((await send(app, 'chat-1', userMessage('shorts again'))).status).toBe(200)
     await settled()
   })
 

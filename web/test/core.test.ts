@@ -128,7 +128,7 @@ describe('describeChatError', () => {
         (error: Error) => error
       )
 
-    expect(describeChatError(await send(busy.fetch))).toContain('still being saved')
+    expect(describeChatError(await send(busy.fetch))).toContain('still in progress')
     expect(describeChatError(await send(failing.fetch))).toBe('The request failed (400): body: message text is empty')
   })
 })

@@ -64,11 +64,12 @@ export function createShoppingTools(repo: ProductRepository, categories: readonl
         minPrice: priceSchema.optional().describe('Lowest price in USD, if the shopper gave one.'),
         maxPrice: priceSchema.optional().describe('Highest price in USD, if the shopper gave a budget.'),
       }),
-      execute: (input, { toolCallId }) => findProducts(input, {
+      execute: (input, { toolCallId, abortSignal }) => findProducts(input, {
         repo,
         model: options.searchModel,
         categories,
         log: options.logSink === undefined ? undefined : modelCallLog(options.logSink, toolCallId),
+        abortSignal,
       }),
       toModelOutput: ({ output }) => ({ type: 'json', value: toModelOutput(output) }),
     }),

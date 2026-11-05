@@ -43,6 +43,16 @@ const ids = (result: FindProductsResult) => result.status === 'ok'
   : result
 
 describe('findProducts', () => {
+  it('passes its abort signal to every model call, so a timed-out chat step cancels them', async () => {
+    const { model, deps } = setup({ plan: workout })
+    const controller = new AbortController()
+
+    await findProducts({ request: 'workout gear' }, { ...deps, abortSignal: controller.signal })
+    controller.abort()
+
+    expect(model.doGenerateCalls.map(call => call.abortSignal?.aborted)).toEqual([true, true])
+  })
+
   it('plans, runs every query, and returns one labelled group per need', async () => {
     const { repo, model, deps } = setup({ plan: workout })
 
