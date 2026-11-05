@@ -1,4 +1,4 @@
-import { AssistantRuntimeProvider, ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAui } from '@assistant-ui/react'
+import { AssistantRuntimeProvider, ComposerPrimitive, MessagePrimitive, ThreadPrimitive, useAuiState } from '@assistant-ui/react'
 import { useAISDKRuntime } from '@assistant-ui/react-ai-sdk'
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
 import { type KeyboardEvent, type RefObject, useCallback, useLayoutEffect, useRef } from 'react'
@@ -137,8 +137,8 @@ function AssistantMessage() {
 }
 
 function Composer() {
-  const aui = useAui()
-  const isRunning = aui.thread.getState().isRunning
+  // Subscribed, so the Enter handler and Send see a run start and end.
+  const isRunning = useAuiState(state => state.thread.isRunning)
 
   // While a reply streams, assistant-ui ignores Enter but lets it insert a newline,
   // which reads as a broken send. Swallow it instead; Shift+Enter still adds a line.

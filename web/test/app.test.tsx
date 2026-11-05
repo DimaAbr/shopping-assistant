@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { UIMessage } from 'ai'
 
 import { ShoppingProvider } from '../src/core/index.ts'
@@ -128,7 +128,8 @@ describe('app', () => {
 
     fireEvent.change(input, { target: { value: 'shorts' } })
     fireEvent.keyDown(input, { key: 'Enter' })
-    await screen.findByRole('button', { name: 'Stop' })
+    // Send is disabled while the reply streams.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled')).toBe(true))
 
     fireEvent.change(input, { target: { value: 'hello?' } })
     const notPrevented = fireEvent.keyDown(input, { key: 'Enter' })
