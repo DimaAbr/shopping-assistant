@@ -1,7 +1,0 @@
-Fun stuff for later:
-    Web component embeddable widget ❔
-
-To Read up:
-    Alternatives to evalite.
-        Not a fan of custom test harness in code.
-        Doubly not a fan for the (most complex) live agent tests...
