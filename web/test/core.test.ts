@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { UIMessage } from 'ai'
 
 import { ANONYMOUS_ID_KEY, createApiClient, describeChatError, resolveUserId } from '../src/core/index.ts'
+import { HISTORY_LIMIT } from '../src/core/api-client.ts'
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const items = new Map(Object.entries(initial))
@@ -73,14 +74,16 @@ describe('api client', () => {
     expect(header(calls[0]!.init, 'x-user-id')).toBe('user-1')
   })
 
-  it('loads history, and treats an unknown (new) chat as empty', async () => {
+  it('loads history pages, and treats an unknown (new) chat as empty', async () => {
     const stored: UIMessage[] = [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }]
-    const { fetch, calls } = fakeFetch(url => url.includes('/known/') ? json({ messages: stored, hasMore: false }) : json({ error: 'chat not found' }, 404))
+    const { fetch, calls } = fakeFetch(url => url.includes('/known/') ? json({ messages: stored, hasMore: true }) : json({ error: 'chat not found' }, 404))
     const client = createApiClient(config(fetch))
 
-    expect(await client.loadHistory('known')).toEqual(stored)
-    expect(await client.loadHistory('new-chat')).toEqual([])
-    expect(calls[0]!.url).toBe('/api/chats/known/messages?limit=200')
+    expect(await client.loadHistory('known')).toEqual({ messages: stored, hasMore: true })
+    expect(await client.loadHistory('known', 'm9')).toEqual({ messages: stored, hasMore: true })
+    expect(await client.loadHistory('new-chat')).toEqual({ messages: [], hasMore: false })
+    expect(calls[0]!.url).toBe(`/api/chats/known/messages?limit=${HISTORY_LIMIT}`)
+    expect(calls[1]!.url).toBe(`/api/chats/known/messages?limit=${HISTORY_LIMIT}&before=m9`)
   })
 
   it('throws other API errors with their message', async () => {

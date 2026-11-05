@@ -5,23 +5,29 @@
   --surface: #ffffff;
   --surface-muted: #f5f5f7;
   --border: #e2e2e6;
+  --border-strong: #c4c4cc;
   --accent: #2f6f4f;
   --accent-text: #ffffff;
   --danger: #b3261e;
   --radius: 0.6rem;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --composer-shadow: 0 2px 12px rgb(0 0 0 / 0.08);
+  /* Native controls and scrollbars follow the theme; also opts out of browser-forced dark mode. */
+  color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --text: #ececf1;
     --text-muted: #a0a0ab;
-    --surface: #1e1f22;
+    --surface: #2a2b30;
     --surface-muted: #16171a;
-    --border: #2e3036;
+    --border: #5c5f6a;
+    --border-strong: #8a8e9c;
     --accent: #6fcf97;
     --accent-text: #0d1f15;
     --danger: #f2827a;
+    --composer-shadow: 0 2px 14px rgb(0 0 0 / 0.35);
   }
 }
 
@@ -38,4 +44,10 @@ body {
   background: var(--surface);
   font-family: var(--font);
   line-height: 1.5;
+}
+
+/* Buttons don't inherit text color or font by default (UA `buttontext` stays black on dark surfaces). */
+button {
+  color: inherit;
+  font: inherit;
 }

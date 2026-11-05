@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { UIMessage } from 'ai'
 
 import { ShoppingProvider } from '../src/core/index.ts'
@@ -50,6 +50,10 @@ const history: UIMessage[] = [
   },
 ]
 
+const text = (id: string, role: 'user' | 'assistant', value: string): UIMessage => ({ id, role, parts: [{ type: 'text', text: value }] })
+const older: UIMessage[] = [text('u1', 'user', 'first question'), text('a1', 'assistant', 'first answer')]
+const newer: UIMessage[] = [text('u2', 'user', 'second question'), text('a2', 'assistant', 'second answer')]
+
 function fakeApi() {
   return (async (input: RequestInfo | URL) => {
     const url = String(input)
@@ -59,6 +63,9 @@ function fakeApi() {
       return reply([{ id: 'chat-1', title: 'Lipstick shopping', firstText: 'show me lipstick', createdAt: '2026-11-04T10:00:00Z', updatedAt: '2026-11-04T10:00:00Z' }])
     if (url.startsWith('/api/chats/chat-1/messages'))
       return reply({ messages: history, hasMore: false })
+    // A longer chat in two pages: the newest one, then the one before `u2`.
+    if (url.startsWith('/api/chats/chat-2/messages'))
+      return reply(url.includes('before=u2') ? { messages: older, hasMore: false } : { messages: newer, hasMore: true })
     return reply({ error: 'chat not found' }, 404)
   }) as typeof fetch
 }
@@ -86,5 +93,33 @@ describe('app', () => {
 
     expect(await screen.findByText('What are you shopping for?')).toBeTruthy()
     expect(location.hash).toMatch(/^#[0-9a-f-]{36}$/)
+  })
+
+  it('loads earlier history pages on demand', async () => {
+    location.hash = '#chat-2'
+    renderApp()
+
+    const button = await screen.findByRole('button', { name: 'Load earlier messages' })
+    expect(screen.getByText('second question', { selector: 'main *' })).toBeTruthy()
+    expect(screen.queryByText('first question', { selector: 'main *' })).toBeNull()
+
+    fireEvent.click(button)
+
+    expect(await screen.findByText('first question', { selector: 'main *' })).toBeTruthy()
+    expect(screen.getByText('second question', { selector: 'main *' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Load earlier messages' })).toBeNull()
+  })
+
+  it('opens the chat list from the menu button and closes it on select', async () => {
+    renderApp()
+    const menu = screen.getByRole('button', { name: 'Chats' })
+    expect(menu.getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.click(menu)
+    expect(menu.getAttribute('aria-expanded')).toBe('true')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Lipstick shopping' }))
+    expect(menu.getAttribute('aria-expanded')).toBe('false')
+    expect(location.hash).toBe('#chat-1')
   })
 })

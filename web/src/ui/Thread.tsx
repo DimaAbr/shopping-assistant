@@ -1,9 +1,10 @@
 import { AssistantRuntimeProvider, ComposerPrimitive, MessagePrimitive, ThreadPrimitive } from '@assistant-ui/react'
 import { useAISDKRuntime } from '@assistant-ui/react-ai-sdk'
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
+import { type RefObject, useCallback, useLayoutEffect, useRef } from 'react'
 import type { UIMessage } from 'ai'
 
-import { describeChatError, useChatHistory, useShoppingChat } from '../core/index.ts'
+import { describeChatError, useChatHistory, useEarlierMessages, useShoppingChat } from '../core/index.ts'
 import { ProductTiles } from './ProductTiles.tsx'
 import styles from './Thread.module.css'
 
@@ -21,23 +22,32 @@ export function ChatView({ chatId }: { chatId: string }) {
     return <div className={`${styles.status} ${styles.error}`} role="alert">Couldn't load this chat: {history.error.message}</div>
 
   // Keyed: `useChat` takes the history only when it creates the chat.
-  return <ChatThread key={chatId} chatId={chatId} initialMessages={history.messages} />
+  return <ChatThread key={chatId} chatId={chatId} initialMessages={history.messages} initialHasMore={history.hasMore} />
 }
 
-function ChatThread({ chatId, initialMessages }: { chatId: string, initialMessages: UIMessage[] }) {
+function ChatThread({ chatId, initialMessages, initialHasMore }: {
+  chatId: string
+  initialMessages: UIMessage[]
+  initialHasMore: boolean
+}) {
   const chat = useShoppingChat(chatId, initialMessages)
+  const earlier = useEarlierMessages(chat, initialHasMore)
   const runtime = useAISDKRuntime(chat)
+  const viewport = useRef<HTMLDivElement>(null)
+  const keepScroll = useKeepScrollOnPrepend(viewport, chat.messages[0]?.id)
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className={styles.thread}>
-        <ThreadPrimitive.Viewport className={styles.viewport}>
+        <ThreadPrimitive.Viewport ref={viewport} className={styles.viewport}>
           <ThreadPrimitive.Empty>
             <div className={styles.welcome}>
               <h2>What are you shopping for?</h2>
               <p>Try “a gift for my dad who likes cooking” or “show me some lipstick”.</p>
             </div>
           </ThreadPrimitive.Empty>
+
+          {earlier.hasEarlier && <LoadEarlier earlier={earlier} beforeLoad={keepScroll} />}
 
           <ThreadPrimitive.Messages>
             {({ message }) => message.role === 'user' ? <UserMessage /> : <AssistantMessage />}
@@ -55,6 +65,49 @@ function ChatThread({ chatId, initialMessages }: { chatId: string, initialMessag
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   )
+}
+
+/**
+ * Loads the previous history page. Our own button, not `ThreadPrimitive.LoadEarlier`:
+ * `useAISDKRuntime` doesn't pass `hasEarlier`/`onLoadEarlier` through to the runtime.
+ */
+function LoadEarlier({ earlier, beforeLoad }: {
+  earlier: ReturnType<typeof useEarlierMessages>
+  beforeLoad: () => void
+}) {
+  const load = () => {
+    beforeLoad()
+    void earlier.loadEarlier()
+  }
+
+  return (
+    <div className={styles.loadEarlier}>
+      <button type="button" className={styles.loadEarlierButton} onClick={load} disabled={earlier.loading}>
+        {earlier.loading ? 'Loading…' : 'Load earlier messages'}
+      </button>
+      {earlier.error && <p className={styles.error} role="alert">Couldn't load earlier messages: {earlier.error.message}</p>}
+    </div>
+  )
+}
+
+/**
+ * Prepending grows the viewport from the top. Call the returned function before
+ * a load: once the first message changes, the distance from the bottom is
+ * restored, so the messages that were on screen stay in place.
+ */
+function useKeepScrollOnPrepend(viewport: RefObject<HTMLDivElement | null>, firstMessageId: string | undefined) {
+  const fromBottom = useRef<number>(undefined)
+
+  useLayoutEffect(() => {
+    const element = viewport.current
+    if (element && fromBottom.current !== undefined) element.scrollTop = element.scrollHeight - fromBottom.current
+    fromBottom.current = undefined
+  }, [viewport, firstMessageId])
+
+  return useCallback(() => {
+    const element = viewport.current
+    if (element) fromBottom.current = element.scrollHeight - element.scrollTop
+  }, [viewport])
 }
 
 function UserMessage() {

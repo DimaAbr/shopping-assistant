@@ -1,5 +1,6 @@
 .results {
   margin: 0.75rem 0;
+  container-type: inline-size;
 }
 
 .group + .group {
@@ -83,6 +84,48 @@
   background: linear-gradient(90deg, var(--surface-muted), var(--surface), var(--surface-muted));
   background-size: 200% 100%;
   animation: shimmer 1.2s ease-in-out infinite;
+}
+
+/* Narrow containers (phones, small embeds): compact rows, image beside the text. */
+@container (max-width: 30rem) {
+  .tiles {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .tile {
+    flex-direction: row;
+  }
+
+  .image {
+    flex: none;
+    align-self: stretch;
+    width: 5.5rem;
+    aspect-ratio: auto;
+  }
+
+  .body {
+    min-width: 0;
+    gap: 0.125rem;
+    padding: 0.5rem 0.65rem;
+  }
+
+  .title {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .description {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .skeleton {
+    min-height: 6rem;
+  }
 }
 
 @keyframes shimmer {

@@ -1,8 +1,13 @@
 import { useChatList } from '../core/index.ts'
 import styles from './Sidebar.module.css'
 
-/** The user's chats. Our own, not assistant-ui's thread list: the core owns the list (08). */
-export function Sidebar({ activeChatId, onSelect, onNewChat }: {
+/**
+ * The user's chats. Our own, not assistant-ui's thread list: the core owns the list (08).
+ * `open` only matters on narrow screens, where the list is a drawer.
+ */
+export function Sidebar({ id, open, activeChatId, onSelect, onNewChat }: {
+  id: string
+  open: boolean
   activeChatId: string
   onSelect: (chatId: string) => void
   onNewChat: () => void
@@ -10,8 +15,10 @@ export function Sidebar({ activeChatId, onSelect, onNewChat }: {
   const { chats, loading, error } = useChatList()
 
   return (
-    <nav className={styles.sidebar} aria-label="Chats">
-      <button type="button" className={styles.newChat} onClick={onNewChat}>+ New chat</button>
+    <nav id={id} className={styles.sidebar} aria-label="Chats" data-open={open || undefined}>
+      <div className={styles.header}>
+        <button type="button" className={`${styles.item} ${styles.newChat}`} onClick={onNewChat}>+ New chat</button>
+      </div>
 
       {error && <p className={styles.error} role="alert">Couldn't load chats: {error.message}</p>}
       {!loading && !error && chats.length === 0 && <p className={styles.empty}>No chats yet.</p>}

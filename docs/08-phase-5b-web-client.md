@@ -65,9 +65,9 @@ identity: { userId: 'u-42' }  ──▶ X-User-Id: u-42                   ──
 |---|---|
 | `config.ts` | `ShoppingConfig` |
 | `identity.ts` | `resolveUserId(config)` |
-| `api-client.ts` | `createApiClient(config)` → `userId`, `listChats()`, `loadHistory(chatId)` (latest 200; 404 → `[]`), `transport`, `newChatId()`; `describeChatError` |
+| `api-client.ts` | `createApiClient(config)` → `userId`, `listChats()`, `loadHistory(chatId, before?)` (a `MessagePage` of `HISTORY_LIMIT` messages; 404 → an empty page), `transport`, `newChatId()`; `describeChatError` |
 | `provider.tsx` | `<ShoppingProvider config>`: builds the client once and owns the chat list (`useChatList()`: refreshes after a turn, and again 3 s later for the background title) |
-| `use-shopping-chat.ts` | `useChatHistory(chatId)`, then `useShoppingChat(chatId, initialMessages)` = `useChat({ id, messages, transport, onFinish: refresh })` |
+| `use-shopping-chat.ts` | `useChatHistory(chatId)` (the newest page), then `useShoppingChat(chatId, initialMessages)` = `useChat({ id, messages, transport, onFinish: refresh })`; `useEarlierMessages(chat, hasMore)` prepends older pages via `setMessages` |
 
 `useChat` reads `messages` only when it creates the chat, so the UI mounts the chat once history has loaded, **keyed by chat id**.
 
@@ -75,17 +75,17 @@ identity: { userId: 'u-42' }  ──▶ X-User-Id: u-42                   ──
 
 `web/src/ui/` is the standalone page:
 
-- `App.tsx`: the sidebar plus the active chat (hash-based)
+- `App.tsx`: the sidebar plus the active chat (hash-based). Below 40rem the sidebar is an off-canvas drawer behind a menu button (closes on select, backdrop, Escape)
 - `Sidebar.tsx`: our own chat list
 - `Thread.tsx`: assistant-ui primitives. User/assistant messages, markdown text, tool parts → `ProductTiles`, encrypted reasoning parts hidden, a composer with Send/Stop, scroll-to-bottom, inline errors
-- `ProductTiles.tsx`: the product widget. Image, title, price, and the description trimmed to 3 lines in CSS (07: the full description is sent)
-- `*.module.css` + `global.css`: design tokens as CSS variables (light and dark), so a host theme only overrides variables
+- `ProductTiles.tsx`: the product widget. Image, title, price, and the description trimmed to 3 lines in CSS (07: the full description is sent). Below a 30rem container width (container query, so embeds behave too) tiles become compact rows with the image beside the text
+- `*.module.css` + `global.css`: design tokens as CSS variables (light and dark), so a host theme only overrides variables. `color-scheme: light dark` is declared, and buttons inherit `color`, so native controls follow the theme
 
 ## Behaviour worth knowing
 
 - **Tiles show every product the tool returned**, not only the ones the model picked. "Perfume under $100" shows a $129.99 tile, while the model's text lists only the cheaper ones. This is the missing price filter (phase 2b). Once 2b filters in code, the tiles follow.
 - An **empty first search** stays visible ("No products found for 'perfume'") above the agent's retry. It's accurate, but noisy. It could be collapsed later.
-- **History loads the newest 200 messages.** Older pages (`hasMore`) aren't loaded yet; `ThreadPrimitive.LoadEarlier` is the likely hook.
+- **History is paged.** A chat opens on its newest page; a "Load earlier messages" button at the top prepends older pages and keeps the scroll position. It's our own button: `ThreadPrimitive.LoadEarlier` needs `hasEarlier`/`onLoadEarlier` on the runtime, and `useAISDKRuntime` doesn't pass them through. Pages are `HISTORY_LIMIT` = 200 messages (the API's max).
 - **The bundle is ~945 KB** (≈280 KB gzip), mostly assistant-ui, Radix and react-markdown. It's fine for the standalone page. Revisit for the embed (code-split or trim).
 - **No regenerate / edit.** The API only appends new user messages, so the UI has no reload or edit actions.
 - Clearing `localStorage` gives a fresh anonymous user. The old chats stay in the DB under the old id.

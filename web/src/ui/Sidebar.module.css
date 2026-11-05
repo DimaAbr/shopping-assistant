@@ -8,18 +8,9 @@
   background: var(--surface-muted);
 }
 
-.newChat {
-  padding: 0.55rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.newChat:hover {
-  border-color: var(--accent);
+.header {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
 }
 
 .list {
@@ -38,7 +29,6 @@
   border: none;
   border-radius: var(--radius);
   background: transparent;
-  font: inherit;
   font-size: 0.9rem;
   text-align: left;
   text-overflow: ellipsis;
@@ -55,6 +45,11 @@
   font-weight: 600;
 }
 
+.newChat {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .empty,
 .error {
   margin: 0.25rem 0.75rem;
@@ -64,4 +59,30 @@
 
 .error {
   color: var(--danger);
+}
+
+/* Narrow screens: an off-canvas drawer, opened from the menu button in the top bar. */
+@media (max-width: 40rem) {
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 20;
+    width: min(18rem, 85vw);
+    visibility: hidden;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease, visibility 0s linear 0.2s;
+  }
+
+  .sidebar[data-open] {
+    visibility: visible;
+    transform: none;
+    transition: transform 0.2s ease;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .sidebar[data-open] {
+    transition: none;
+  }
 }

@@ -11,7 +11,10 @@ import { resolveUserId } from './identity.ts'
 
 export const USER_ID_HEADER = 'x-user-id'
 
-/** The newest messages loaded when a chat opens (the API's max page size). */
+/**
+ * Messages per history page: the newest page when a chat opens, then each
+ * "load earlier" page (the API's max page size).
+ */
 export const HISTORY_LIMIT = 200
 
 export class ApiError extends Error {
@@ -45,15 +48,19 @@ export function createApiClient(config: ShoppingConfig) {
     listChats: () => getJson<ChatSummaryJson[]>(`${base}/chats`),
 
     /**
-     * The newest messages of a chat, oldest first. A chat the server doesn't
-     * know yet (a new, client-generated id) has no history: 404 → `[]`.
+     * A page of a chat's history, oldest first: the newest messages, or with
+     * `before` the ones just before that message id. `hasMore` says whether
+     * older messages exist. A chat the server doesn't know yet (a new,
+     * client-generated id) has no history: 404 → an empty page.
      */
-    async loadHistory(chatId: string): Promise<UIMessage[]> {
+    async loadHistory(chatId: string, before?: string): Promise<MessagePage> {
+      const query = new URLSearchParams({ limit: String(HISTORY_LIMIT) })
+      if (before !== undefined) query.set('before', before)
+
       try {
-        const page = await getJson<MessagePage>(`${chatUrl(chatId)}?limit=${HISTORY_LIMIT}`)
-        return page.messages
+        return await getJson<MessagePage>(`${chatUrl(chatId)}?${query}`)
       } catch (error) {
-        if (error instanceof ApiError && error.status === 404) return []
+        if (error instanceof ApiError && error.status === 404) return { messages: [], hasMore: false }
         throw error
       }
     },

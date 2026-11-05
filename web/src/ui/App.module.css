@@ -5,19 +5,53 @@
 }
 
 .main {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+.topBar,
+.backdrop {
+  display: none;
 }
 
 @media (max-width: 40rem) {
   .app {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
   }
 
-  .app > nav {
-    max-height: 30dvh;
-    border-right: none;
+  .topBar {
+    display: flex;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
     border-bottom: 1px solid var(--border);
+  }
+
+  .menuButton {
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .menuButton:hover {
+    background: var(--surface-muted);
+  }
+
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: block;
+    padding: 0;
+    border: none;
+    background: rgb(0 0 0 / 0.4);
+    cursor: default;
   }
 }
